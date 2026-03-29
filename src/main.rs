@@ -7,6 +7,7 @@ mod gguf;
 mod trace;
 mod diagnose;
 mod compare;
+mod visualize;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -105,6 +106,10 @@ enum Commands {
         /// Also show raw (unquantized) trace side-by-side
         #[arg(long)]
         raw: bool,
+
+        /// Output as HTML heatmap (opens in browser)
+        #[arg(long)]
+        html: bool,
     },
 
     /// Compare two decompiled circuits (detect complements, shared structure)
@@ -250,7 +255,7 @@ fn main() -> Result<()> {
             Ok(())
         }
 
-        Commands::Trace { input, sequence, eps, raw } => {
+        Commands::Trace { input, sequence, eps, raw, html } => {
             let rnn = weights::load_rnn_weights(&input)?;
             let quantized = quantize::quantize_rnn(&rnn, eps);
 
@@ -281,9 +286,21 @@ fn main() -> Result<()> {
                 println!();
             }
 
-            println!("── Quantized (eps={}) ──", eps);
             let quant_trace = trace::trace_quantized(&quantized, &input_vecs);
-            print!("{}", trace::format_trace(&quant_trace));
+
+            if html {
+                let title = input.file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "trace".to_string());
+                let html_content = visualize::trace_to_html(&quant_trace, &title);
+                let path = std::env::temp_dir().join("nd-trace.html");
+                std::fs::write(&path, &html_content)?;
+                eprintln!("Wrote: {}", path.display());
+                std::process::Command::new("open").arg(&path).spawn()?;
+            } else {
+                println!("── Quantized (eps={}) ──", eps);
+                print!("{}", trace::format_trace(&quant_trace));
+            }
 
             Ok(())
         }
