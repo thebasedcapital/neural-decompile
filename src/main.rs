@@ -9,7 +9,11 @@ mod diagnose;
 mod compare;
 mod visualize;
 mod taxonomy;
+mod diff;
+mod evolve;
 mod patch;
+mod slice;
+mod xray;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -34,7 +38,7 @@ enum Commands {
         #[arg(short, long, default_value = "0.15")]
         eps: f64,
 
-        /// Output format: python, rust, table
+        /// Output format: python, rust, rust-kani, table
         #[arg(short, long, default_value = "python")]
         format: String,
 
@@ -155,6 +159,86 @@ enum Commands {
         eps: f64,
     },
 
+    /// Isolate the active circuit — remove neurons that never fire or can't reach output
+    Slice {
+        /// Path to weight file
+        #[arg()]
+        input: PathBuf,
+
+        /// Path to test cases (JSON) — traces all inputs to find active neurons
+        #[arg()]
+        tests: Option<PathBuf>,
+
+        /// Single input sequence (e.g. "1,0,1,1") — slice for one specific input
+        #[arg(long)]
+        sequence: Option<String>,
+
+        /// Quantization epsilon
+        #[arg(short, long, default_value = "0.15")]
+        eps: f64,
+
+        /// Immediately decompile the sliced circuit (python/rust/table)
+        #[arg(long)]
+        emit: Option<String>,
+
+        /// Save sliced weights to JSON
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Full circuit X-ray — stats, slice, hybrid decomposition, traces, HTML report
+    Xray {
+        /// Path to weight file
+        #[arg()]
+        input: PathBuf,
+
+        /// Path to test cases (enables verification + slice + smart trace selection)
+        #[arg()]
+        tests: Option<PathBuf>,
+
+        /// Quantization epsilon
+        #[arg(short, long, default_value = "0.15")]
+        eps: f64,
+
+        /// Output as HTML (opens in browser)
+        #[arg(long)]
+        html: bool,
+    },
+
+    /// Watch a circuit evolve during training — load epoch snapshots and visualize crystallization
+    Evolve {
+        /// Directory containing epoch_*.json snapshots
+        #[arg()]
+        dir: PathBuf,
+
+        /// Path to test cases (enables FSM verification per frame)
+        #[arg(long)]
+        tests: Option<PathBuf>,
+
+        /// Quantization epsilon
+        #[arg(short, long, default_value = "0.15")]
+        eps: f64,
+
+        /// Output as HTML animation (opens in browser)
+        #[arg(long)]
+        html: bool,
+    },
+
+    /// Semantic diff between two circuits (weight-by-weight delta)
+    Diff {
+        /// First weight file (before)
+        #[arg()]
+        a: PathBuf,
+
+        /// Second weight file (after)
+        #[arg()]
+        b: PathBuf,
+
+        /// Quantization epsilon
+        #[arg(short, long, default_value = "0.15")]
+        eps: f64,
+    },
+
     /// Compile a decompiled Python program back into weight JSON
     Patch {
         /// Path to decompiled .py file
@@ -193,6 +277,7 @@ fn main() -> Result<()> {
             let code = match format.as_str() {
                 "python" => emit::emit_python(&quantized, "decompiled"),
                 "rust" => emit::emit_rust(&quantized, "decompiled"),
+                "rust-kani" => emit::emit_rust_kani(&quantized, "decompiled"),
                 "table" => emit::emit_table(&quantized),
                 _ => anyhow::bail!("Unknown format: {}", format),
             };
@@ -365,6 +450,161 @@ fn main() -> Result<()> {
             let test_cases = verify::load_test_cases(&tests)?;
             let report = diagnose::run_diagnosis(&rnn, &quantized, &test_cases);
             print!("{}", diagnose::format_diagnosis(&report));
+            Ok(())
+        }
+
+        Commands::Slice { input, tests, sequence, eps, emit: emit_fmt, output } => {
+            let rnn = weights::load_rnn_weights(&input)?;
+            let quantized = quantize::quantize_rnn(&rnn, eps);
+
+            let result = if let Some(seq) = sequence {
+                // Single sequence mode
+                let bits: Vec<u8> = seq.split(',')
+                    .map(|s| s.trim().parse::<u8>())
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| anyhow::anyhow!("Bad sequence: {}", e))?;
+
+                let input_vecs: Vec<Vec<f64>> = bits.iter().map(|&b| {
+                    if rnn.input_dim == 2 {
+                        if b == 0 { vec![1.0, 0.0] } else { vec![0.0, 1.0] }
+                    } else if rnn.input_dim == 1 {
+                        vec![b as f64]
+                    } else {
+                        let mut v = vec![0.0; rnn.input_dim];
+                        if (b as usize) < rnn.input_dim { v[b as usize] = 1.0; }
+                        v
+                    }
+                }).collect();
+
+                let traces = vec![trace::trace_quantized(&quantized, &input_vecs)];
+                slice::slice_from_traces(&quantized, &traces)
+            } else if let Some(tests_path) = tests {
+                let test_cases = verify::load_test_cases(&tests_path)?;
+                slice::slice_from_tests(&quantized, &test_cases)
+            } else {
+                anyhow::bail!("Provide either test cases or --sequence");
+            };
+
+            // Print the slice report
+            print!("{}", slice::format_slice(&result));
+
+            // Optionally emit decompiled code from the sliced circuit
+            if let Some(fmt) = emit_fmt {
+                println!();
+                let code = match fmt.as_str() {
+                    "python" => emit::emit_python(&result.circuit, "sliced"),
+                    "rust" => emit::emit_rust(&result.circuit, "sliced"),
+                    "rust-kani" => emit::emit_rust_kani(&result.circuit, "sliced"),
+                    "table" => emit::emit_table(&result.circuit),
+                    _ => anyhow::bail!("Unknown format: {}", fmt),
+                };
+                print!("{}", code);
+            }
+
+            // Optionally save sliced weights
+            if let Some(out_path) = output {
+                let json = serde_json::json!({
+                    "W_hh": (0..result.circuit.hidden_dim).map(|i|
+                        (0..result.circuit.hidden_dim).map(|j|
+                            result.circuit.w_hh[[i, j]]
+                        ).collect::<Vec<_>>()
+                    ).collect::<Vec<_>>(),
+                    "W_hx": (0..result.circuit.hidden_dim).map(|i|
+                        (0..result.circuit.input_dim).map(|j|
+                            result.circuit.w_hx[[i, j]]
+                        ).collect::<Vec<_>>()
+                    ).collect::<Vec<_>>(),
+                    "b_h": result.circuit.b_h,
+                    "W_y": (0..result.circuit.output_dim).map(|i|
+                        (0..result.circuit.hidden_dim).map(|j|
+                            result.circuit.w_y[[i, j]]
+                        ).collect::<Vec<_>>()
+                    ).collect::<Vec<_>>(),
+                    "b_y": result.circuit.b_y,
+                });
+                std::fs::write(&out_path, serde_json::to_string_pretty(&json)?)?;
+                eprintln!("Saved sliced weights: {}", out_path.display());
+            }
+
+            Ok(())
+        }
+
+        Commands::Xray { input, tests, eps, html: html_flag } => {
+            let rnn = weights::load_rnn_weights(&input)?;
+            let quantized = quantize::quantize_rnn(&rnn, eps);
+            let name = input.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "circuit".to_string());
+
+            let test_cases = match tests {
+                Some(ref path) => Some(verify::load_test_cases(path)?),
+                None => None,
+            };
+
+            let report = xray::run_xray(&rnn, &quantized, &name, test_cases.as_deref());
+
+            if html_flag {
+                let html_content = xray::render_html(&report);
+                let path = std::env::temp_dir().join(format!("nd-xray-{}.html", name));
+                std::fs::write(&path, &html_content)?;
+                eprintln!("Wrote: {}", path.display());
+                std::process::Command::new("open").arg(&path).spawn()?;
+            } else {
+                print!("{}", xray::format_xray(&report));
+            }
+
+            Ok(())
+        }
+
+        Commands::Evolve { dir, tests, eps, html: html_flag } => {
+            let snapshots = evolve::load_snapshots(&dir)?;
+            if snapshots.is_empty() {
+                anyhow::bail!("No epoch_*.json snapshots found in {}", dir.display());
+            }
+            eprintln!("Loaded {} snapshots from {}", snapshots.len(), dir.display());
+
+            let test_cases = match tests {
+                Some(ref path) => Some(verify::load_test_cases(path)?),
+                None => {
+                    // Auto-detect tests.json in the snapshot dir
+                    let auto = dir.join("tests.json");
+                    if auto.exists() {
+                        eprintln!("Auto-detected: {}", auto.display());
+                        Some(verify::load_test_cases(&auto)?)
+                    } else {
+                        None
+                    }
+                }
+            };
+
+            let name = dir.file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "circuit".to_string());
+
+            let report = evolve::analyze(&snapshots, test_cases.as_deref(), eps, &name);
+
+            if html_flag {
+                let html_content = evolve::render_html(&report);
+                let path = std::env::temp_dir().join(format!("nd-evolve-{}.html", name));
+                std::fs::write(&path, &html_content)?;
+                eprintln!("Wrote: {}", path.display());
+                std::process::Command::new("open").arg(&path).spawn()?;
+            } else {
+                print!("{}", evolve::format_evolve(&report));
+            }
+
+            Ok(())
+        }
+
+        Commands::Diff { a, b, eps } => {
+            let rnn_a = weights::load_rnn_weights(&a)?;
+            let rnn_b = weights::load_rnn_weights(&b)?;
+            let qa = quantize::quantize_rnn(&rnn_a, eps);
+            let qb = quantize::quantize_rnn(&rnn_b, eps);
+            match diff::diff_circuits(&qa, &qb) {
+                Ok(d) => print!("{}", diff::format_diff(&d)),
+                Err(e) => eprintln!("Error: {}", e),
+            }
             Ok(())
         }
 

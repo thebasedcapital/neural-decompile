@@ -1,0 +1,7 @@
+[package]
+name = "kani-proofs"
+version = "0.1.0"
+edition = "2021"
+description = "Formal verification of neural-decompile circuits via Kani"
+
+[dependencies]
