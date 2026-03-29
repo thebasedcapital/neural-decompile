@@ -9,6 +9,7 @@ mod diagnose;
 mod compare;
 mod visualize;
 mod taxonomy;
+mod patch;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -152,6 +153,17 @@ enum Commands {
         /// Quantization epsilon
         #[arg(short, long, default_value = "0.15")]
         eps: f64,
+    },
+
+    /// Compile a decompiled Python program back into weight JSON
+    Patch {
+        /// Path to decompiled .py file
+        #[arg()]
+        input: PathBuf,
+
+        /// Output JSON file (stdout if omitted)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 
     /// Create a synthetic test GGUF file
@@ -353,6 +365,11 @@ fn main() -> Result<()> {
             let test_cases = verify::load_test_cases(&tests)?;
             let report = diagnose::run_diagnosis(&rnn, &quantized, &test_cases);
             print!("{}", diagnose::format_diagnosis(&report));
+            Ok(())
+        }
+
+        Commands::Patch { input, output } => {
+            patch::patch_file(&input, output.as_deref())?;
             Ok(())
         }
 
