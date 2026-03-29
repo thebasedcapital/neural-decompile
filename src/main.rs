@@ -3,6 +3,7 @@ mod quantize;
 mod emit;
 mod verify;
 mod fsm;
+mod gguf;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -60,6 +61,36 @@ enum Commands {
         /// Quantization epsilon
         #[arg(short, long, default_value = "0.15")]
         eps: f64,
+    },
+
+    /// List all tensor names and shapes in a GGUF file
+    Layers {
+        /// Path to GGUF file
+        #[arg()]
+        input: PathBuf,
+    },
+
+    /// Extract a single tensor from a GGUF file as JSON
+    Extract {
+        /// Path to GGUF file
+        #[arg()]
+        input: PathBuf,
+
+        /// Tensor name to extract
+        #[arg(short, long)]
+        tensor: String,
+
+        /// Output file (stdout if omitted)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Create a synthetic test GGUF file
+    #[command(name = "make-test-gguf")]
+    MakeTestGguf {
+        /// Output path
+        #[arg(default_value = "test.gguf")]
+        output: PathBuf,
     },
 }
 
@@ -132,6 +163,34 @@ fn main() -> Result<()> {
             println!("Dead neurons:  {:?}", stats.dead_neurons);
             println!("Max weight:    {:.4}", stats.max_abs);
             println!("L∞ to int:     {:.4}", stats.linf_to_int);
+            Ok(())
+        }
+
+        Commands::Layers { input } => {
+            let gf = gguf::GgufFile::open(&input)?;
+            gf.print_layers();
+            Ok(())
+        }
+
+        Commands::Extract { input, tensor, output } => {
+            let gf = gguf::GgufFile::open(&input)?;
+            let data = gf.extract_f32(&tensor)?;
+
+            let info = gf.find_tensor(&tensor).unwrap();
+            eprintln!("Extracted '{}' {} {} — {} elements",
+                     tensor, info.dtype.name(), info.shape_str(), data.len());
+
+            let json = serde_json::to_string(&data)?;
+            match output {
+                Some(path) => std::fs::write(&path, &json)?,
+                None => println!("{}", json),
+            }
+            Ok(())
+        }
+
+        Commands::MakeTestGguf { output } => {
+            gguf::create_test_gguf(&output)?;
+            println!("Created test GGUF: {}", output.display());
             Ok(())
         }
     }
