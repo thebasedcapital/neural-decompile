@@ -4,6 +4,8 @@ mod emit;
 mod verify;
 mod fsm;
 mod gguf;
+mod trace;
+mod diagnose;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -83,6 +85,40 @@ enum Commands {
         /// Output file (stdout if omitted)
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+
+    /// Trace hidden state evolution on a specific input
+    Trace {
+        /// Path to weight file
+        #[arg()]
+        input: PathBuf,
+
+        /// Input sequence as comma-separated bits (e.g. "1,0,1,1")
+        #[arg()]
+        sequence: String,
+
+        /// Quantization epsilon
+        #[arg(short, long, default_value = "0.15")]
+        eps: f64,
+
+        /// Also show raw (unquantized) trace side-by-side
+        #[arg(long)]
+        raw: bool,
+    },
+
+    /// Diagnose why quantization fails on specific test cases
+    Diagnose {
+        /// Path to weight file
+        #[arg()]
+        input: PathBuf,
+
+        /// Path to test cases
+        #[arg()]
+        tests: PathBuf,
+
+        /// Quantization epsilon
+        #[arg(short, long, default_value = "0.15")]
+        eps: f64,
     },
 
     /// Create a synthetic test GGUF file
@@ -185,6 +221,53 @@ fn main() -> Result<()> {
                 Some(path) => std::fs::write(&path, &json)?,
                 None => println!("{}", json),
             }
+            Ok(())
+        }
+
+        Commands::Trace { input, sequence, eps, raw } => {
+            let rnn = weights::load_rnn_weights(&input)?;
+            let quantized = quantize::quantize_rnn(&rnn, eps);
+
+            // Parse input sequence: "1,0,1,1" → one-hot vectors
+            let bits: Vec<u8> = sequence.split(',')
+                .map(|s| s.trim().parse::<u8>())
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| anyhow::anyhow!("Bad sequence (expected comma-separated 0/1): {}", e))?;
+
+            let input_vecs: Vec<Vec<f64>> = bits.iter().map(|&b| {
+                if rnn.input_dim == 2 {
+                    // One-hot: [1,0] for bit=0, [0,1] for bit=1
+                    if b == 0 { vec![1.0, 0.0] } else { vec![0.0, 1.0] }
+                } else if rnn.input_dim == 1 {
+                    vec![b as f64]
+                } else {
+                    // For multi-input, treat as one-hot index
+                    let mut v = vec![0.0; rnn.input_dim];
+                    if (b as usize) < rnn.input_dim { v[b as usize] = 1.0; }
+                    v
+                }
+            }).collect();
+
+            if raw {
+                println!("── Raw (unquantized) ──");
+                let raw_trace = trace::trace_raw(&rnn, &input_vecs);
+                print!("{}", trace::format_trace(&raw_trace));
+                println!();
+            }
+
+            println!("── Quantized (eps={}) ──", eps);
+            let quant_trace = trace::trace_quantized(&quantized, &input_vecs);
+            print!("{}", trace::format_trace(&quant_trace));
+
+            Ok(())
+        }
+
+        Commands::Diagnose { input, tests, eps } => {
+            let rnn = weights::load_rnn_weights(&input)?;
+            let quantized = quantize::quantize_rnn(&rnn, eps);
+            let test_cases = verify::load_test_cases(&tests)?;
+            let report = diagnose::run_diagnosis(&rnn, &quantized, &test_cases);
+            print!("{}", diagnose::format_diagnosis(&report));
             Ok(())
         }
 
