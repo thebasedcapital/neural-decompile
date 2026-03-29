@@ -6,6 +6,7 @@ mod fsm;
 mod gguf;
 mod trace;
 mod diagnose;
+mod compare;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -104,6 +105,21 @@ enum Commands {
         /// Also show raw (unquantized) trace side-by-side
         #[arg(long)]
         raw: bool,
+    },
+
+    /// Compare two decompiled circuits (detect complements, shared structure)
+    Compare {
+        /// First weight file
+        #[arg()]
+        a: PathBuf,
+
+        /// Second weight file
+        #[arg()]
+        b: PathBuf,
+
+        /// Quantization epsilon
+        #[arg(short, long, default_value = "0.15")]
+        eps: f64,
     },
 
     /// Diagnose why quantization fails on specific test cases
@@ -221,6 +237,16 @@ fn main() -> Result<()> {
                 Some(path) => std::fs::write(&path, &json)?,
                 None => println!("{}", json),
             }
+            Ok(())
+        }
+
+        Commands::Compare { a, b, eps } => {
+            let rnn_a = weights::load_rnn_weights(&a)?;
+            let rnn_b = weights::load_rnn_weights(&b)?;
+            let qa = quantize::quantize_rnn(&rnn_a, eps);
+            let qb = quantize::quantize_rnn(&rnn_b, eps);
+            let result = compare::compare(&qa, &qb);
+            print!("{}", compare::format_compare(&result));
             Ok(())
         }
 
