@@ -8,6 +8,7 @@ mod trace;
 mod diagnose;
 mod compare;
 mod visualize;
+mod taxonomy;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -121,6 +122,17 @@ enum Commands {
         /// Second weight file
         #[arg()]
         b: PathBuf,
+
+        /// Quantization epsilon
+        #[arg(short, long, default_value = "0.15")]
+        eps: f64,
+    },
+
+    /// Build a taxonomy of circuit families from a directory of weight files
+    Taxonomy {
+        /// Directory containing weight JSON files
+        #[arg()]
+        dir: PathBuf,
 
         /// Quantization epsilon
         #[arg(short, long, default_value = "0.15")]
@@ -252,6 +264,36 @@ fn main() -> Result<()> {
             let qb = quantize::quantize_rnn(&rnn_b, eps);
             let result = compare::compare(&qa, &qb);
             print!("{}", compare::format_compare(&result));
+            Ok(())
+        }
+
+        Commands::Taxonomy { dir, eps } => {
+            // Load all weight files from directory
+            let mut circuits = Vec::new();
+            let mut entries: Vec<_> = std::fs::read_dir(&dir)?
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    name.ends_with(".json") && !name.contains("_tests")
+                })
+                .collect();
+            entries.sort_by_key(|e| e.file_name());
+
+            for entry in &entries {
+                let path = entry.path();
+                let name = path.file_stem().unwrap().to_string_lossy().to_string();
+                match weights::load_rnn_weights(&path) {
+                    Ok(rnn) => {
+                        let q = quantize::quantize_rnn(&rnn, eps);
+                        circuits.push((name, q));
+                    }
+                    Err(e) => eprintln!("  skip {}: {}", path.display(), e),
+                }
+            }
+
+            eprintln!("Loaded {} circuits from {}", circuits.len(), dir.display());
+            let pairs = taxonomy::build_taxonomy(&circuits);
+            print!("{}", taxonomy::format_taxonomy(&circuits, &pairs));
             Ok(())
         }
 
