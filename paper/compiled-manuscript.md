@@ -38,11 +38,23 @@ Our contributions are:
 
 Code, data, and Kani proofs are publicly available at [repository URL].
 
-# 2. Method
+# 2. Related Work
+
+**Mechanistic interpretability.** The dominant paradigm studies networks through runtime behavior. Olsson et al. [1] identified induction heads by analyzing attention patterns across training. Cunningham et al. [2] and Bricken et al. [4] decomposed activations using sparse autoencoders (SAEs), recovering interpretable features from residual streams. Conmy et al. [3] automated circuit discovery by measuring which computational graph edges matter for specific tasks. These methods require inference on chosen inputs and produce behavioral descriptions tied to those inputs. Our approach is complementary: we analyze weights at rest, producing input-independent circuit descriptions that can then be verified against runtime behavior.
+
+**Program extraction from neural networks.** Michaud et al. [5] introduced MIPS, a pipeline that normalizes RNN weights through whitening, Jordan decomposition, Toeplitz normalization, de-biasing, and rounding to extract Python programs. They demonstrated extraction on 62 algorithmic tasks. Our method differs in three ways: (1) we use L1 regularization during training followed by direct quantization, which is simpler and preserves integer alignment that the normalizer chain destroys; (2) we verify extracted programs with Kani model checking, providing formal guarantees rather than test-case validation; (3) we extend to transformer attention heads, which MIPS does not address.
+
+**Causal abstraction.** Geiger et al. [13] formalized interchange intervention as a framework for testing whether a hypothesized computational mechanism governs model behavior. The key idea: if replacing a model component with the output of a hypothesized mechanism preserves model behavior, the hypothesis is causally adequate. We adopt this framework for transformer verification (Section 4.7), with the distinction that our hypothesized mechanisms come from static weight decomposition rather than researcher intuition.
+
+**Attention head function.** Prior work has categorized attention heads by behavioral role: previous-token heads, induction heads [1], duplicate-token heads, and name-mover heads (Wang et al., 2023). These categories are defined by attention pattern, not weight structure. We show that weight-level analysis reveals a finer taxonomy — rank-based classification into gates, classifiers, and complex heads — and that this taxonomy correlates with functional specialization visible in activations.
+
+**Structured pruning.** The observation that attention heads can be removed with minimal performance loss is well-established (Voita et al., 2019; Michel et al., 2019). Our contribution is connecting pruning to interpretability: we do not just show that a head can be removed, but explain what the surviving weights compute and verify that the sparse subset replicates the dense head's function (interchange KL = $4.5 \times 10^{-4}$).
+
+# 3. Method
 
 Neural decompilation operates in four stages: entropy-guided discovery, weight-level decomposition, sparse circuit extraction, and functional verification. We implement each stage in `nd`, a Rust CLI tool that operates directly on quantized GGUF model files without requiring a full inference stack.
 
-## 2.1 Entropy-Guided Circuit Discovery
+## 3.1 Entropy-Guided Circuit Discovery
 
 Given a GGUF model file containing $N$ tensors, we compute per-tensor block entropy to identify structurally anomalous weight matrices. For Q4\_0 quantized tensors, each block of 32 values uses one of 16 quantization levels. The Shannon entropy of the level distribution within a block measures how many levels the block actually uses:
 
@@ -52,7 +64,7 @@ where $p_i$ is the fraction of values in block $b$ at level $i$. We average $H_b
 
 We flag tensors with $\bar{H}$ more than $2\sigma$ below the cross-layer mean as candidate circuits for decomposition. For attention projection weights (Q, K, V), we extend this analysis to the per-head level by partitioning the tensor's Q4\_0 blocks according to head boundaries and computing $\bar{H}$ per head. This identifies specific attention heads with unusually structured weight patterns, even when the tensor-level entropy is unremarkable.
 
-## 2.2 Weight-Level Decomposition
+## 3.2 Weight-Level Decomposition
 
 For each candidate head, we extract the weight submatrix $\mathbf{W}_h \in \mathbb{R}^{d_{\text{head}} \times d_{\text{model}}}$ and perform truncated SVD:
 
@@ -62,17 +74,17 @@ The effective rank $r$ (the smallest $k$ such that $\sum_{i=1}^{k} \sigma_i^2 \g
 
 We identify the semantic meaning of each principal direction $\mathbf{v}_i$ by projecting the full token embedding matrix $\mathbf{E} \in \mathbb{R}^{V \times d_{\text{model}}}$ onto $\mathbf{v}_i$ and examining which tokens produce the largest positive and negative projections. This maps each direction to an interpretable axis (e.g., "code tokens vs. natural language tokens").
 
-## 2.3 Sparse Circuit Extraction
+## 3.3 Sparse Circuit Extraction
 
 From the decomposed head, we extract a sparse circuit by thresholding: retain only weights with $|w_{ij}| > \tau$ for a threshold $\tau$ chosen to capture $\geq 60\%$ of the per-row energy. This produces a weight matrix $\mathbf{W}_h^{\text{sparse}}$ with typically 2-6\% nonzero entries. The sparse circuit is the decompiled output: a compact formula mapping embedding dimensions to head output dimensions, readable by a human and executable as code.
 
 For RNN circuits, the decompiled code is emitted as Python or Rust source with integer-valued weight matrices and explicit state transition logic. For transformer attention heads, the output is a sparse linear map with labeled embedding features.
 
-## 2.4 Formal Verification (RNNs)
+## 3.4 Formal Verification (RNNs)
 
 For RNN circuits with integer-valued quantized weights, we emit Rust source code and verify structural equivalence using Kani, a model checker for Rust. Kani exhaustively checks all possible inputs up to a bounded length, proving that the decompiled circuit produces identical outputs to the original network for every input in the verified domain. This provides formal correctness guarantees stronger than test-case verification: a Kani proof covers the entire input space, not a sample.
 
-## 2.5 Functional Verification (Transformers)
+## 3.5 Functional Verification (Transformers)
 
 For transformer attention heads, formal verification is intractable due to floating-point arithmetic and model scale. We instead verify through three complementary experiments:
 
@@ -86,17 +98,17 @@ where $\sigma^2_{\text{between}}$ is the weighted sum of squared distances from 
 
 **Interchange intervention.** We replace the head's dense K projection weight with $\mathbf{W}_h^{\text{sparse}}$ during a full forward pass and measure the output divergence. We report three metrics: KL divergence between output logit distributions, top-1 token prediction agreement, and Pearson correlation of logit vectors. Near-zero KL divergence and near-perfect agreement confirm that the sparse circuit faithfully replicates the dense head's contribution to the model's output.
 
-## 2.6 Cross-Architecture Replication
+## 3.6 Cross-Architecture Replication
 
 To test whether discovered circuits are architecture-specific artifacts, we repeat the entropy scan and activation trace on models from different architectural families. We compare models that differ in tokenizer vocabulary, RoPE variant (standard vs. YaRN), QKV bias terms, GQA ratio, and training data composition. Convergent results across architectures indicate the circuit is a universal property of multilingual transformer training, not a design choice.
 
-## 2.7 Implementation
+## 3.7 Implementation
 
 `nd` is implemented in 8,800 lines of Rust with dependencies on `clap`, `ndarray`, `serde`, `anyhow`, and `memmap2`. It operates directly on memory-mapped GGUF files, supporting Q4\_0, Q8\_0, F16, BF16, and F32 tensor formats. The full toolchain comprises 15 commands including `intmap` (entropy scan), `decompile` (code emission), `verify` (test-case checking), `slice` (dead neuron removal), and `xray` (combined analysis with HTML output). Kani verification uses a separate Cargo workspace with bounded proof harnesses. Activation tracing uses MLX for native Apple Silicon inference. All source code, weight files, and experimental data are publicly available.
 
-# 3. Results
+# 4. Results
 
-## 3.1 RNN Decompilation and Formal Verification
+## 4.1 RNN Decompilation and Formal Verification
 
 We applied `nd` to 13 RNN circuits trained on binary sequence classification tasks (parity, modular arithmetic, regular language recognition). Table 1 summarizes the results.
 
@@ -122,7 +134,7 @@ Six circuits received Kani formal proofs verifying correctness for all possible 
 
 Our L1 + direct quantization method outperforms the MIPS 5-stage normalizer chain (Michaud & Tegmark, 2024) in both simplicity and result quality. The normalizer chain (whitening $\rightarrow$ Jordan form $\rightarrow$ Toeplitz $\rightarrow$ de-bias $\rightarrow$ round) actively destroys integer alignment in weights that are already near-integer, whereas direct quantization preserves it.
 
-## 3.2 Transformer Entropy Scan
+## 4.2 Transformer Entropy Scan
 
 We scanned 201 tensors in TinyLlama 1.1B (Q4\_0) and 291 tensors in Llama-2 7B (Q4\_0) using `nd intmap`. In both models, layer 0 attention projections are entropy outliers.
 
@@ -136,7 +148,7 @@ We scanned 201 tensors in TinyLlama 1.1B (Q4\_0) and 291 tensors in Llama-2 7B (
 
 Layer 0 Q and K projections are 15-25% below their cross-layer mean entropy. Layer 0 V projections are within 2% of their mean — the structure is in the routing (Q/K), not the content extraction (V). By layer 2, per-head entropy variance collapses: layer 0 heads span 1.824-2.924 bits ($\sigma = 0.305$), while layer 2 heads span 3.196-3.373 bits ($\sigma = 0.046$), a 6.6$\times$ reduction in spread.
 
-## 3.3 Head Taxonomy
+## 4.3 Head Taxonomy
 
 Per-head SVD decomposition of all 32 KV heads in TinyLlama layer 0 K reveals a structured distribution of circuit complexity.
 
@@ -150,9 +162,9 @@ Per-head SVD decomposition of all 32 KV heads in TinyLlama layer 0 K reveals a s
 
 Heads 6 and 7 are near-duplicate rank-1 gates (cosine similarity 0.992 between their principal directions) that both detect newlines vs. LaTeX/math tokens. Their output wiring differs — the model copies one feature detector into two heads to provide the Q projection with two independent handles on the same signal (multi-path routing).
 
-Heads 2 and 3 are complementary: H2 detects EOS/BOM tokens, H3 detects CJK tokens, with opposite sign patterns on shared embedding features. This mirrors the complement structure discovered in RNN decompilation (Section 3.1).
+Heads 2 and 3 are complementary: H2 detects EOS/BOM tokens, H3 detects CJK tokens, with opposite sign patterns on shared embedding features. This mirrors the complement structure discovered in RNN decompilation (Section 4.1).
 
-## 3.4 Circuit Decompilation: Head 21 (Multi-Script Classifier)
+## 4.4 Circuit Decompilation: Head 21 (Multi-Script Classifier)
 
 TinyLlama layer 0 KV head 21's K projection (within the head-2 KV group, rows 168-175 of the 256$\times$2048 K weight matrix) has the model's largest weight magnitude ($|w| = 3.109$). SVD reveals effective rank 5 (90% energy in 5 singular values).
 
@@ -178,7 +190,7 @@ $$k_{49} = -2.453 \cdot d_{411} + 0.617 \cdot d_{1454} + 0.617 \cdot d_{1447} + 
 
 The sparse circuit retains 882 of 16,384 weights (5.4\% at threshold $|w| > 0.1$, reduced to 441 weights / 2.7\% in the verification experiments).
 
-## 3.5 Circuit Decompilation: Head 15 (Rank-2 Binary Gate)
+## 4.5 Circuit Decompilation: Head 15 (Rank-2 Binary Gate)
 
 Head 15 (rows 120-127) has the lowest per-head entropy (1.824 bits, 3.5 effective quantization levels). SVD reveals rank 2: singular values [3.71, 1.46, 0.26, 0.14, ...], with the rank-2 approximation capturing 90.7% of energy (9.3% residual).
 
@@ -190,7 +202,7 @@ The two principal directions encode:
 
 Head 15 and Head 21 are orthogonal (cosine similarity $\approx 0$) despite reading the same embedding features. Head 21 classifies tokens into multiple script categories; Head 15 compresses the same features into a 2D binary signal.
 
-## 3.6 Functional Verification: Activation Tracing
+## 4.6 Functional Verification: Activation Tracing
 
 We ran TinyLlama on 72 synthetic prompts across 9 content categories (8 per category: English, Chinese, Russian, Python, C++, LaTeX, Japanese, Korean, Arabic) and extracted Head 21's K projection activations via MLX native inference.
 
@@ -207,7 +219,7 @@ The full-weights and sparse-only conditions produce indistinguishable clustering
 
 PCA of the activation vectors shows PC1 (86.1% variance) separates code/LaTeX (positive) from natural language (negative), with Russian most negative and Python most positive.
 
-## 3.7 Interchange Intervention
+## 4.7 Interchange Intervention
 
 We replaced Head 21's dense K projection weight with the sparse circuit ($\mathbf{W}^{\text{sparse}}$) during a full forward pass through all 22 layers of TinyLlama, on 12 multilingual prompts including script-transition sentences (e.g., "The function def hello() prints こんにちは to the screen").
 
@@ -221,7 +233,7 @@ We replaced Head 21's dense K projection weight with the sparse circuit ($\mathb
 
 Substituting the dense head with the sparse circuit produces near-identical model output: the KL divergence between output distributions is $4.5 \times 10^{-4}$, the top predicted token matches 97.6% of positions, and the logit vectors correlate at $r = 0.9999$. The sparse circuit is a faithful causal replacement for the dense head.
 
-## 3.8 Cross-Architecture Replication
+## 4.8 Cross-Architecture Replication
 
 We replicated the entropy scan and activation trace on Qwen2.5-0.5B-Instruct, a model from a different architectural family (Table 7).
 
@@ -248,37 +260,25 @@ Despite these architectural differences, the same pattern emerges:
 
 All three heads separate code/structured tokens from natural language tokens along the same axis, with Fisher ratios exceeding 4.0. The layer-0 K entropy outlier holds in both models (7.3$\sigma$ in TinyLlama, 4.3$\sigma$ in Qwen2.5). This pattern emerges from multilingual transformer training itself, independent of architecture, tokenizer, or training data.
 
-# 4. Discussion
+# 5. Discussion
 
-## 4.1 Summary of Findings
+## 5.1 Summary of Findings
 
 We introduced neural decompilation — extracting executable sparse circuits from trained weights — and demonstrated it at two scales: formal verification on 13 RNN tasks, and functional verification on production LLM attention heads. The core discovery is that layer-0 K projections in multilingual transformers contain discrete, low-rank circuits that classify tokens by script type. These circuits are sparse (2.7% of weights), causally necessary (ablation Fisher = 0.00), faithful (interchange KL = $4.5 \times 10^{-4}$), and cross-architectural (Fisher > 4.0 in both Llama and Qwen families).
 
-## 4.2 Relation to Prior Work
+## 5.2 Why Layer 0?
 
-**Comparison with MIPS.** Michaud & Tegmark (2024) introduced the MIPS normalizer chain for extracting interpretable programs from RNN weights. Our L1 + direct quantization method is simpler (1 step vs. 5) and produces higher-quality results: the normalizer chain's whitening step actively destroys integer alignment in weights that are already near-integer after L1 training. We extend beyond MIPS in two directions: formal verification via Kani (which MIPS does not attempt), and application to transformer attention heads (which MIPS does not address).
-
-**Comparison with activation-based interpretability.** Sparse autoencoders (Cunningham et al., 2023; Bricken et al., 2023) decompose activation vectors into interpretable features. Our approach is complementary: SAEs identify features from activations at runtime, while we identify circuits from weights at rest. The distinction matters because a weight-level circuit is input-independent — it describes what the head can compute, not what it happens to compute on a particular input. Our interchange intervention (Section 3.7) bridges the two: we verify that the weight-level circuit produces the same activations as the dense head during inference.
-
-**Comparison with causal abstraction.** Geiger et al. (2023) formalize interchange intervention as a test of whether a hypothesized mechanism causally governs a model's behavior. Our interchange intervention (Section 3.7) follows this framework: we substitute the dense head with the decompiled sparse circuit and measure output divergence. The distinction is that our hypothesis comes from static weight analysis, not from a researcher's prior belief about model behavior.
-
-**Comparison with circuit discovery.** ACDC (Conmy et al., 2023) and related methods discover circuits by measuring which edges in the computational graph are necessary for a task. These approaches require a defined task and a dataset. Our entropy-guided discovery requires neither — it identifies structured circuits from weight statistics alone, before any inference. The circuits we find may not correspond to researcher-defined tasks; they reflect whatever structure the model learned during training.
-
-**Layer-0 attention routing.** The observation that layer-0 attention heads implement coarse routing has partial support in prior work. Olsson et al. (2022) identified "previous token heads" and "induction heads" in early layers but characterized them by attention pattern, not weight structure. Our contribution is showing that this routing function is encoded as discrete, decompilable circuits in the K projection weights, with a specific taxonomy (gates, classifiers, complex heads) and a universal structure across architectures.
-
-## 4.3 Why Layer 0?
-
-The layer-0 K entropy outlier (Section 3.2) admits a natural explanation. Layer 0 operates directly on token embeddings, which are fixed vectors assigned during training. The K projection at layer 0 must route attention using only these static features — it cannot rely on contextual representations built by earlier layers (there are none). This constraint favors discrete routing: rather than computing a nuanced, context-dependent key, the layer-0 K head reads a few embedding dimensions that encode token-level properties (script type, syntactic category, whitespace structure) and produces a fixed routing signal.
+The layer-0 K entropy outlier (Section 4.2) admits a natural explanation. Layer 0 operates directly on token embeddings, which are fixed vectors assigned during training. The K projection at layer 0 must route attention using only these static features — it cannot rely on contextual representations built by earlier layers (there are none). This constraint favors discrete routing: rather than computing a nuanced, context-dependent key, the layer-0 K head reads a few embedding dimensions that encode token-level properties (script type, syntactic category, whitespace structure) and produces a fixed routing signal.
 
 By layer 2, the residual stream contains information from layer 0 and layer 1's attention and FFN computations. The K projection can now compute context-dependent keys, which require the full quantization palette (all 16 Q4\_0 levels), explaining the entropy convergence.
 
 The rank distribution supports this: 34% of layer-0 heads are rank 1-2 (binary decisions on 1-2 features), while no layer-2 head has comparably low entropy. The model transitions from fixed routing to flexible computation within the first two layers.
 
-## 4.4 Limitations
+## 5.3 Limitations
 
 **Model scale.** All verified models are small ($\leq$ 7B parameters). Whether the same discrete circuits exist in 70B+ models is untested. Larger models have more heads and more layers, which could allow finer-grained specialization or greater redundancy.
 
-**Perplexity insensitivity.** Our GGUF patching experiment (Section 3.5, Table 6 in verification.md) showed that ablating Head 21 changes perplexity by only 0.24% — within error bars. Perplexity is a coarse metric: it averages over all tokens, diluting the signal from the $\sim$15% of tokens where script classification matters. The activation trace (Fisher = 5.94) and interchange intervention (KL = $4.5 \times 10^{-4}$) are more sensitive to the head's specific function.
+**Perplexity insensitivity.** Our GGUF patching experiment (Section 4.5, Table 6 in verification.md) showed that ablating Head 21 changes perplexity by only 0.24% — within error bars. Perplexity is a coarse metric: it averages over all tokens, diluting the signal from the $\sim$15% of tokens where script classification matters. The activation trace (Fisher = 5.94) and interchange intervention (KL = $4.5 \times 10^{-4}$) are more sensitive to the head's specific function.
 
 **Two architecture families.** We replicated on Llama and Qwen. Testing on architecturally distinct models (Mamba, RWKV, or mixture-of-experts architectures) would strengthen the universality claim.
 
@@ -286,13 +286,13 @@ The rank distribution supports this: 34% of layer-0 heads are rank 1-2 (binary d
 
 **No downstream task evaluation.** We verified the circuit's classification function through activation tracing and interchange intervention, but did not measure downstream task performance (e.g., multilingual NER, code-switching detection). The circuit may contribute to capabilities not captured by our probes.
 
-## 4.5 Implications
+## 5.4 Implications
 
 Neural decompilation offers a path toward auditable AI. If a model's attention routing can be read as a formula — "this head classifies tokens by script type using 7 embedding dimensions and 23 weighted terms" — then that formula can be inspected for bias, tested for edge cases, and formally verified against a specification. The gap between "the model seems to do X" (activation-based) and "the model's weights implement X" (decompilation-based) is the gap between behavioral observation and structural understanding.
 
 The practical implication is selective pruning with guarantees. If a sparse circuit with 2.7% of weights reproduces a head's function (interchange KL = $4.5 \times 10^{-4}$), the remaining 97.3% can be pruned without functional loss — not as an approximation, but as a verified simplification. Scaling this to all heads and layers could yield principled compression ratios grounded in circuit-level understanding rather than statistical heuristics.
 
-# 5. Conclusion
+# 6. Conclusion
 
 We introduced neural decompilation, a method that extracts readable, executable sparse circuits from neural network weights. On 13 RNN tasks, decompiled circuits are formally verified correct for all inputs via Kani model checking. On TinyLlama 1.1B, we decompiled 32 layer-0 K heads into a taxonomy of gates, classifiers, and complex representations, and identified a multi-script classifier (Head 21) whose sparse circuit — 2.7% of the head's weights — is causally necessary (ablation Fisher = 0.00), functionally faithful (interchange KL = $4.5 \times 10^{-4}$, top-1 agreement 97.6%), and cross-architectural (replicated in Qwen2.5-0.5B with Fisher = 5.44). Layer-0 K projections are entropy outliers in every model tested (4.3-7.3$\sigma$), containing discrete routing circuits that vanish by layer 2. These circuits represent a new category of interpretability evidence: not what the model does on specific inputs, but what algorithms its weights encode.
 
@@ -326,6 +326,12 @@ We introduced neural decompilation, a method that extracts readable, executable 
 
 [13] A. Geiger, D. Ibeling, A. Zur, M. Huang, and C. Potts, "Causal abstraction: A theoretical foundation for mechanistic interpretability," *arXiv preprint*, 2023. arXiv:2301.04709.
 
-<!-- All 13 citations verified against arxiv.org API on 2026-03-30. -->
+[14] K. Wang, A. Variengien, A. Conmy, B. Shlegeris, and J. Steinhardt, "Interpretability in the wild: a circuit for indirect object identification in GPT-2 Small," in *Proc. ICLR*, 2023. arXiv:2211.00593.
+
+[15] E. Voita, D. Talbot, F. Moiseev, R. Sennrich, and I. Titov, "Analyzing multi-head self-attention: Specialized heads do the heavy lifting, the rest can be pruned," in *Proc. ACL*, 2019. arXiv:1905.09418.
+
+[16] P. Michel, O. Levy, and G. Neubig, "Are sixteen heads really better than one?" in *Proc. NeurIPS*, 2019. arXiv:1905.10650.
+
+<!-- All 16 citations verified against arxiv.org API on 2026-03-30. -->
 <!-- [4] Bricken et al. is a Transformer Circuits Thread blog post (transformer-circuits.pub), not a traditional arxiv paper. Verify URL before submission. -->
 <!-- [11] GGUF is documentation, not a paper. Consider citing Gerganov's llama.cpp repo directly. -->

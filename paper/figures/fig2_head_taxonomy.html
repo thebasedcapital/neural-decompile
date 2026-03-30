@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Figure 2: Head Taxonomy</title>
+<style>
+body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #fff; color: #222; margin: 40px; max-width: 900px; }
+h2 { font-size: 16px; font-weight: 600; }
+.caption { font-size: 11px; color: #666; line-height: 1.5; margin-top: 10px; }
+</style>
+</head><body>
+<h2>Figure 2. Taxonomy of 32 layer-0 K heads by effective rank</h2>
+<svg width="850" height="340" style="font-family: Helvetica Neue, Arial, sans-serif;">
+  <!-- Rank 1-2 gates -->
+  <rect x="40" y="40" width="220" height="240" rx="8" fill="#e8f5e9" stroke="#4caf50" stroke-width="2"/>
+  <text x="150" y="30" font-size="13" font-weight="600" fill="#2e7d32" text-anchor="middle">Rank 1-2: Gates</text>
+  <text x="150" y="58" font-size="11" fill="#666" text-anchor="middle">11/32 heads (34%)</text>
+
+  <text x="55" y="82" font-size="10" fill="#333">H6, H7  — newline detector (cos=0.99)</text>
+  <text x="55" y="100" font-size="10" fill="#333">H15 — syntax vs prose (rank-2)</text>
+  <text x="55" y="118" font-size="10" fill="#333">H14 — German/European langs</text>
+  <text x="55" y="136" font-size="10" fill="#333">H26, H30, H31 — language family</text>
+  <text x="55" y="154" font-size="10" fill="#333">H0, H1 — word type</text>
+  <text x="55" y="172" font-size="10" fill="#333">H4 — special tokens</text>
+  <text x="55" y="192" font-size="10" fill="#333">H10 — asymptotic terms</text>
+
+  <text x="150" y="230" font-size="28" font-weight="700" fill="#4caf50" text-anchor="middle">34%</text>
+  <text x="150" y="252" font-size="10" fill="#888" text-anchor="middle">Binary routing decisions</text>
+  <text x="150" y="268" font-size="10" fill="#888" text-anchor="middle">1-2 features per head</text>
+
+  <!-- Rank 3-4 classifiers -->
+  <rect x="290" y="40" width="220" height="240" rx="8" fill="#fff3e0" stroke="#ff9800" stroke-width="2"/>
+  <text x="400" y="30" font-size="13" font-weight="600" fill="#e65100" text-anchor="middle">Rank 3-4: Classifiers</text>
+  <text x="400" y="58" font-size="11" fill="#666" text-anchor="middle">14/32 heads (44%)</text>
+
+  <text x="305" y="82" font-size="10" fill="#333">H2, H3 — EOS↔CJK complement</text>
+  <text x="305" y="100" font-size="10" fill="#333">H8 — Cyrillic vs punctuation</text>
+  <text x="305" y="118" font-size="10" fill="#333">H9 — bracket types</text>
+  <text x="305" y="136" font-size="10" fill="#333">H12 — indentation depth</text>
+  <text x="305" y="154" font-size="10" fill="#333">H13 — CJK punctuation</text>
+  <text x="305" y="172" font-size="10" fill="#333">H5 — BOM/usepackage</text>
+  <text x="305" y="192" font-size="10" fill="#333">H24, H25, H27, H28 — lang groups</text>
+
+  <text x="400" y="230" font-size="28" font-weight="700" fill="#ff9800" text-anchor="middle">44%</text>
+  <text x="400" y="252" font-size="10" fill="#888" text-anchor="middle">Multi-class separation</text>
+  <text x="400" y="268" font-size="10" fill="#888" text-anchor="middle">3-4 features per head</text>
+
+  <!-- Rank 5+ complex -->
+  <rect x="540" y="40" width="260" height="240" rx="8" fill="#fce4ec" stroke="#e53935" stroke-width="2"/>
+  <text x="670" y="30" font-size="13" font-weight="600" fill="#c62828" text-anchor="middle">Rank 5+: Complex</text>
+  <text x="670" y="58" font-size="11" fill="#666" text-anchor="middle">7/32 heads (22%)</text>
+
+  <text x="555" y="82" font-size="10" fill="#333" font-weight="600">H21 — multi-script classifier</text>
+  <text x="555" y="100" font-size="10" fill="#c62828">  max|w|=3.109, Fisher=5.94</text>
+  <text x="555" y="120" font-size="10" fill="#333">H22 — code delimiter classifier</text>
+  <text x="555" y="138" font-size="10" fill="#333">H16 — Slavic/representation</text>
+  <text x="555" y="156" font-size="10" fill="#333">H17 — academic/reference</text>
+  <text x="555" y="174" font-size="10" fill="#333">H18 — jQuery/framework code</text>
+  <text x="555" y="192" font-size="10" fill="#333">H20 — domain detection</text>
+
+  <text x="670" y="230" font-size="28" font-weight="700" fill="#e53935" text-anchor="middle">22%</text>
+  <text x="670" y="252" font-size="10" fill="#888" text-anchor="middle">Rich representations</text>
+  <text x="670" y="268" font-size="10" fill="#888" text-anchor="middle">5-8 features per head</text>
+
+  <!-- Arrow showing complexity gradient -->
+  <line x1="40" y1="310" x2="800" y2="310" stroke="#999" stroke-width="2" marker-end="url(#arrow)"/>
+  <defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#999"/></marker></defs>
+  <text x="420" y="330" font-size="11" fill="#888" text-anchor="middle">Increasing circuit complexity →</text>
+</svg>
+<p class="caption"><b>Figure 2.</b> Taxonomy of all 32 KV heads in TinyLlama layer 0 K projection, classified by effective rank (dimensions needed for 90% SVD energy). Rank 1-2 heads implement binary gates using 1-2 embedding features. Rank 3-4 heads perform multi-class separation. Rank 5+ heads encode rich, multi-dimensional representations. Heads 6 and 7 are near-duplicates (cosine 0.992) providing multi-path routing of a single newline detector. Heads 2 and 3 are complements (EOS vs CJK, opposite signs). Head 21 (highlighted) is the multi-script classifier verified by activation tracing and interchange intervention.</p>
+</body></html>

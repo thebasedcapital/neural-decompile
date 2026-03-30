@@ -28,6 +28,12 @@
 
 [13] A. Geiger, D. Ibeling, A. Zur, M. Huang, and C. Potts, "Causal abstraction: A theoretical foundation for mechanistic interpretability," *arXiv preprint*, 2023. arXiv:2301.04709.
 
-<!-- All 13 citations verified against arxiv.org API on 2026-03-30. -->
+[14] K. Wang, A. Variengien, A. Conmy, B. Shlegeris, and J. Steinhardt, "Interpretability in the wild: a circuit for indirect object identification in GPT-2 Small," in *Proc. ICLR*, 2023. arXiv:2211.00593.
+
+[15] E. Voita, D. Talbot, F. Moiseev, R. Sennrich, and I. Titov, "Analyzing multi-head self-attention: Specialized heads do the heavy lifting, the rest can be pruned," in *Proc. ACL*, 2019. arXiv:1905.09418.
+
+[16] P. Michel, O. Levy, and G. Neubig, "Are sixteen heads really better than one?" in *Proc. NeurIPS*, 2019. arXiv:1905.10650.
+
+<!-- All 16 citations verified against arxiv.org API on 2026-03-30. -->
 <!-- [4] Bricken et al. is a Transformer Circuits Thread blog post (transformer-circuits.pub), not a traditional arxiv paper. Verify URL before submission. -->
 <!-- [11] GGUF is documentation, not a paper. Consider citing Gerganov's llama.cpp repo directly. -->

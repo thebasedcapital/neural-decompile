@@ -1,8 +1,8 @@
-# 2. Method
+# 3. Method
 
 Neural decompilation operates in four stages: entropy-guided discovery, weight-level decomposition, sparse circuit extraction, and functional verification. We implement each stage in `nd`, a Rust CLI tool that operates directly on quantized GGUF model files without requiring a full inference stack.
 
-## 2.1 Entropy-Guided Circuit Discovery
+## 3.1 Entropy-Guided Circuit Discovery
 
 Given a GGUF model file containing $N$ tensors, we compute per-tensor block entropy to identify structurally anomalous weight matrices. For Q4\_0 quantized tensors, each block of 32 values uses one of 16 quantization levels. The Shannon entropy of the level distribution within a block measures how many levels the block actually uses:
 
@@ -12,7 +12,7 @@ where $p_i$ is the fraction of values in block $b$ at level $i$. We average $H_b
 
 We flag tensors with $\bar{H}$ more than $2\sigma$ below the cross-layer mean as candidate circuits for decomposition. For attention projection weights (Q, K, V), we extend this analysis to the per-head level by partitioning the tensor's Q4\_0 blocks according to head boundaries and computing $\bar{H}$ per head. This identifies specific attention heads with unusually structured weight patterns, even when the tensor-level entropy is unremarkable.
 
-## 2.2 Weight-Level Decomposition
+## 3.2 Weight-Level Decomposition
 
 For each candidate head, we extract the weight submatrix $\mathbf{W}_h \in \mathbb{R}^{d_{\text{head}} \times d_{\text{model}}}$ and perform truncated SVD:
 
@@ -22,17 +22,17 @@ The effective rank $r$ (the smallest $k$ such that $\sum_{i=1}^{k} \sigma_i^2 \g
 
 We identify the semantic meaning of each principal direction $\mathbf{v}_i$ by projecting the full token embedding matrix $\mathbf{E} \in \mathbb{R}^{V \times d_{\text{model}}}$ onto $\mathbf{v}_i$ and examining which tokens produce the largest positive and negative projections. This maps each direction to an interpretable axis (e.g., "code tokens vs. natural language tokens").
 
-## 2.3 Sparse Circuit Extraction
+## 3.3 Sparse Circuit Extraction
 
 From the decomposed head, we extract a sparse circuit by thresholding: retain only weights with $|w_{ij}| > \tau$ for a threshold $\tau$ chosen to capture $\geq 60\%$ of the per-row energy. This produces a weight matrix $\mathbf{W}_h^{\text{sparse}}$ with typically 2-6\% nonzero entries. The sparse circuit is the decompiled output: a compact formula mapping embedding dimensions to head output dimensions, readable by a human and executable as code.
 
 For RNN circuits, the decompiled code is emitted as Python or Rust source with integer-valued weight matrices and explicit state transition logic. For transformer attention heads, the output is a sparse linear map with labeled embedding features.
 
-## 2.4 Formal Verification (RNNs)
+## 3.4 Formal Verification (RNNs)
 
 For RNN circuits with integer-valued quantized weights, we emit Rust source code and verify structural equivalence using Kani, a model checker for Rust. Kani exhaustively checks all possible inputs up to a bounded length, proving that the decompiled circuit produces identical outputs to the original network for every input in the verified domain. This provides formal correctness guarantees stronger than test-case verification: a Kani proof covers the entire input space, not a sample.
 
-## 2.5 Functional Verification (Transformers)
+## 3.5 Functional Verification (Transformers)
 
 For transformer attention heads, formal verification is intractable due to floating-point arithmetic and model scale. We instead verify through three complementary experiments:
 
@@ -46,10 +46,10 @@ where $\sigma^2_{\text{between}}$ is the weighted sum of squared distances from 
 
 **Interchange intervention.** We replace the head's dense K projection weight with $\mathbf{W}_h^{\text{sparse}}$ during a full forward pass and measure the output divergence. We report three metrics: KL divergence between output logit distributions, top-1 token prediction agreement, and Pearson correlation of logit vectors. Near-zero KL divergence and near-perfect agreement confirm that the sparse circuit faithfully replicates the dense head's contribution to the model's output.
 
-## 2.6 Cross-Architecture Replication
+## 3.6 Cross-Architecture Replication
 
 To test whether discovered circuits are architecture-specific artifacts, we repeat the entropy scan and activation trace on models from different architectural families. We compare models that differ in tokenizer vocabulary, RoPE variant (standard vs. YaRN), QKV bias terms, GQA ratio, and training data composition. Convergent results across architectures indicate the circuit is a universal property of multilingual transformer training, not a design choice.
 
-## 2.7 Implementation
+## 3.7 Implementation
 
 `nd` is implemented in 8,800 lines of Rust with dependencies on `clap`, `ndarray`, `serde`, `anyhow`, and `memmap2`. It operates directly on memory-mapped GGUF files, supporting Q4\_0, Q8\_0, F16, BF16, and F32 tensor formats. The full toolchain comprises 15 commands including `intmap` (entropy scan), `decompile` (code emission), `verify` (test-case checking), `slice` (dead neuron removal), and `xray` (combined analysis with HTML output). Kani verification uses a separate Cargo workspace with bounded proof harnesses. Activation tracing uses MLX for native Apple Silicon inference. All source code, weight files, and experimental data are publicly available.

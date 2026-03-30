@@ -1,6 +1,6 @@
-# 3. Results
+# 4. Results
 
-## 3.1 RNN Decompilation and Formal Verification
+## 4.1 RNN Decompilation and Formal Verification
 
 We applied `nd` to 13 RNN circuits trained on binary sequence classification tasks (parity, modular arithmetic, regular language recognition). Table 1 summarizes the results.
 
@@ -26,7 +26,7 @@ Six circuits received Kani formal proofs verifying correctness for all possible 
 
 Our L1 + direct quantization method outperforms the MIPS 5-stage normalizer chain (Michaud & Tegmark, 2024) in both simplicity and result quality. The normalizer chain (whitening $\rightarrow$ Jordan form $\rightarrow$ Toeplitz $\rightarrow$ de-bias $\rightarrow$ round) actively destroys integer alignment in weights that are already near-integer, whereas direct quantization preserves it.
 
-## 3.2 Transformer Entropy Scan
+## 4.2 Transformer Entropy Scan
 
 We scanned 201 tensors in TinyLlama 1.1B (Q4\_0) and 291 tensors in Llama-2 7B (Q4\_0) using `nd intmap`. In both models, layer 0 attention projections are entropy outliers.
 
@@ -40,7 +40,7 @@ We scanned 201 tensors in TinyLlama 1.1B (Q4\_0) and 291 tensors in Llama-2 7B (
 
 Layer 0 Q and K projections are 15-25% below their cross-layer mean entropy. Layer 0 V projections are within 2% of their mean — the structure is in the routing (Q/K), not the content extraction (V). By layer 2, per-head entropy variance collapses: layer 0 heads span 1.824-2.924 bits ($\sigma = 0.305$), while layer 2 heads span 3.196-3.373 bits ($\sigma = 0.046$), a 6.6$\times$ reduction in spread.
 
-## 3.3 Head Taxonomy
+## 4.3 Head Taxonomy
 
 Per-head SVD decomposition of all 32 KV heads in TinyLlama layer 0 K reveals a structured distribution of circuit complexity.
 
@@ -54,9 +54,9 @@ Per-head SVD decomposition of all 32 KV heads in TinyLlama layer 0 K reveals a s
 
 Heads 6 and 7 are near-duplicate rank-1 gates (cosine similarity 0.992 between their principal directions) that both detect newlines vs. LaTeX/math tokens. Their output wiring differs — the model copies one feature detector into two heads to provide the Q projection with two independent handles on the same signal (multi-path routing).
 
-Heads 2 and 3 are complementary: H2 detects EOS/BOM tokens, H3 detects CJK tokens, with opposite sign patterns on shared embedding features. This mirrors the complement structure discovered in RNN decompilation (Section 3.1).
+Heads 2 and 3 are complementary: H2 detects EOS/BOM tokens, H3 detects CJK tokens, with opposite sign patterns on shared embedding features. This mirrors the complement structure discovered in RNN decompilation (Section 4.1).
 
-## 3.4 Circuit Decompilation: Head 21 (Multi-Script Classifier)
+## 4.4 Circuit Decompilation: Head 21 (Multi-Script Classifier)
 
 TinyLlama layer 0 KV head 21's K projection (within the head-2 KV group, rows 168-175 of the 256$\times$2048 K weight matrix) has the model's largest weight magnitude ($|w| = 3.109$). SVD reveals effective rank 5 (90% energy in 5 singular values).
 
@@ -82,7 +82,7 @@ $$k_{49} = -2.453 \cdot d_{411} + 0.617 \cdot d_{1454} + 0.617 \cdot d_{1447} + 
 
 The sparse circuit retains 882 of 16,384 weights (5.4\% at threshold $|w| > 0.1$, reduced to 441 weights / 2.7\% in the verification experiments).
 
-## 3.5 Circuit Decompilation: Head 15 (Rank-2 Binary Gate)
+## 4.5 Circuit Decompilation: Head 15 (Rank-2 Binary Gate)
 
 Head 15 (rows 120-127) has the lowest per-head entropy (1.824 bits, 3.5 effective quantization levels). SVD reveals rank 2: singular values [3.71, 1.46, 0.26, 0.14, ...], with the rank-2 approximation capturing 90.7% of energy (9.3% residual).
 
@@ -94,7 +94,7 @@ The two principal directions encode:
 
 Head 15 and Head 21 are orthogonal (cosine similarity $\approx 0$) despite reading the same embedding features. Head 21 classifies tokens into multiple script categories; Head 15 compresses the same features into a 2D binary signal.
 
-## 3.6 Functional Verification: Activation Tracing
+## 4.6 Functional Verification: Activation Tracing
 
 We ran TinyLlama on 72 synthetic prompts across 9 content categories (8 per category: English, Chinese, Russian, Python, C++, LaTeX, Japanese, Korean, Arabic) and extracted Head 21's K projection activations via MLX native inference.
 
@@ -111,7 +111,7 @@ The full-weights and sparse-only conditions produce indistinguishable clustering
 
 PCA of the activation vectors shows PC1 (86.1% variance) separates code/LaTeX (positive) from natural language (negative), with Russian most negative and Python most positive.
 
-## 3.7 Interchange Intervention
+## 4.7 Interchange Intervention
 
 We replaced Head 21's dense K projection weight with the sparse circuit ($\mathbf{W}^{\text{sparse}}$) during a full forward pass through all 22 layers of TinyLlama, on 12 multilingual prompts including script-transition sentences (e.g., "The function def hello() prints こんにちは to the screen").
 
@@ -125,7 +125,7 @@ We replaced Head 21's dense K projection weight with the sparse circuit ($\mathb
 
 Substituting the dense head with the sparse circuit produces near-identical model output: the KL divergence between output distributions is $4.5 \times 10^{-4}$, the top predicted token matches 97.6% of positions, and the logit vectors correlate at $r = 0.9999$. The sparse circuit is a faithful causal replacement for the dense head.
 
-## 3.8 Cross-Architecture Replication
+## 4.8 Cross-Architecture Replication
 
 We replicated the entropy scan and activation trace on Qwen2.5-0.5B-Instruct, a model from a different architectural family (Table 7).
 
