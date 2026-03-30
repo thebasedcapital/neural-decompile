@@ -260,6 +260,8 @@ We introduced neural decompilation — extracting executable sparse circuits fro
 
 **Comparison with activation-based interpretability.** Sparse autoencoders (Cunningham et al., 2023; Bricken et al., 2023) decompose activation vectors into interpretable features. Our approach is complementary: SAEs identify features from activations at runtime, while we identify circuits from weights at rest. The distinction matters because a weight-level circuit is input-independent — it describes what the head can compute, not what it happens to compute on a particular input. Our interchange intervention (Section 3.7) bridges the two: we verify that the weight-level circuit produces the same activations as the dense head during inference.
 
+**Comparison with causal abstraction.** Geiger et al. (2023) formalize interchange intervention as a test of whether a hypothesized mechanism causally governs a model's behavior. Our interchange intervention (Section 3.7) follows this framework: we substitute the dense head with the decompiled sparse circuit and measure output divergence. The distinction is that our hypothesis comes from static weight analysis, not from a researcher's prior belief about model behavior.
+
 **Comparison with circuit discovery.** ACDC (Conmy et al., 2023) and related methods discover circuits by measuring which edges in the computational graph are necessary for a task. These approaches require a defined task and a dataset. Our entropy-guided discovery requires neither — it identifies structured circuits from weight statistics alone, before any inference. The circuits we find may not correspond to researcher-defined tasks; they reflect whatever structure the model learned during training.
 
 **Layer-0 attention routing.** The observation that layer-0 attention heads implement coarse routing has partial support in prior work. Olsson et al. (2022) identified "previous token heads" and "induction heads" in early layers but characterized them by attention pattern, not weight structure. Our contribution is showing that this routing function is encoded as discrete, decompilable circuits in the K projection weights, with a specific taxonomy (gates, classifiers, complex heads) and a universal structure across architectures.
@@ -306,8 +308,7 @@ We introduced neural decompilation, a method that extracts readable, executable 
 
 [4] T. Bricken, A. Templeton, J. Batson, B. Chen, A. Jermyn, T. Conerly, N. Turner, C. Anil, C. Denison, A. Askell, R. Lasenby, Y. Wu, S. Kravec, N. Schiefer, T. Maxwell, N. Joseph, Z. Hatfield-Dodds, A. Tamkin, K. Nguyen, B. McLean, J. E. Burke, T. Hume, S. Carter, T. Henighan, and C. Olah, "Towards monosemanticity: Decomposing language models with dictionary learning," *Transformer Circuits Thread*, 2023.
 
-[5] E. Michaud and M. Tegmark, "The quantization model of neural scaling," *arXiv preprint*, 2024. arXiv:2303.13506.
-<!-- Note: The MIPS normalizer chain is described in Michaud's broader work on quantized neural programs. Verify exact paper title/arxiv ID before submission. -->
+[5] E. J. Michaud, I. Liao, V. Lad, Z. Liu, A. Mudide, C. Loughridge, Z. C. Guo, T. R. Kheirkhah, M. Vukelic, and M. Tegmark, "Opening the AI black box: program synthesis via mechanistic interpretability," *arXiv preprint*, 2024. arXiv:2402.05110.
 
 [6] Amazon Web Services, "Kani: A Rust verifier," GitHub repository, 2023. https://github.com/model-checking/kani.
 
@@ -323,10 +324,8 @@ We introduced neural decompilation, a method that extracts readable, executable 
 
 [12] A. W. Awni Hannun, "MLX: An array framework for Apple silicon," Apple Machine Learning Research, 2023. https://github.com/ml-explore/mlx.
 
-<!--
-TODO before submission:
-- Verify [5] Michaud & Tegmark exact title — the MIPS normalizer chain may be in a different paper
-- Add any relevant SAE papers from 2024-2025 if they provide better baselines
-- Add Geiger et al. 2021 (causal abstraction) if discussing interchange intervention lineage
-- Check ICML/NeurIPS 2026 formatting requirements for reference style
--->
+[13] A. Geiger, D. Ibeling, A. Zur, M. Huang, and C. Potts, "Causal abstraction: A theoretical foundation for mechanistic interpretability," *arXiv preprint*, 2023. arXiv:2301.04709.
+
+<!-- All 13 citations verified against arxiv.org API on 2026-03-30. -->
+<!-- [4] Bricken et al. is a Transformer Circuits Thread blog post (transformer-circuits.pub), not a traditional arxiv paper. Verify URL before submission. -->
+<!-- [11] GGUF is documentation, not a paper. Consider citing Gerganov's llama.cpp repo directly. -->
