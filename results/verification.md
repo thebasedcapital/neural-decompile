@@ -39,6 +39,34 @@
 
 4. **Script classification is low-perplexity-impact.** The multi-script classifier contributes minimally to perplexity, even on text containing 7 languages. This makes sense: perplexity measures next-token prediction, and knowing "this is Japanese" doesn't help predict the next token as much as knowing the local context.
 
+## Functional Verification: Activation Tracing (MLX)
+
+Head 21 K projection outputs were captured on 45 synthetic prompts across 9 categories (5 prompts each): English, Chinese, Russian, Python, C++, LaTeX, Japanese, Korean, Arabic.
+
+### Results
+
+**Fisher discriminant ratio: 7.27** (>1.0 = strong separation).
+
+Head 21 activations cluster along a single axis (PC1 = 86.1% variance) that separates:
+
+| PC1 | Category | Type |
+|-----|----------|------|
+| +0.95 | Python code | Symbolic |
+| +0.66 | C++ code | Symbolic |
+| +0.56 | LaTeX | Symbolic |
+| +0.15 | Korean | CJK/agglutinative |
+| -0.14 | Arabic | Non-Latin |
+| -0.23 | Chinese | CJK |
+| -0.35 | Japanese | CJK |
+| -0.54 | English | Latin prose |
+| -1.06 | Russian | Cyrillic |
+
+The axis is **code/structured → natural language**, with script type as a secondary factor. This confirms the weight-level decompilation: the sparse circuit we extracted from the weights produces activations that functionally separate token categories at inference time.
+
+**Method:** MLX native inference on Apple Silicon. TinyLlama loaded via `mlx-lm`, K projection hooked at layer 0, mean-pooled over sequence positions. No approximations — full model forward pass through embedding + RMSNorm + K projection.
+
+Raw data: `h21_activation_trace.json`
+
 ## Method Details
 
 - Q4_0 re-quantization: scale = max(|block|) / 7, nibbles = round(value/scale) + 8, clamped [0,15]
