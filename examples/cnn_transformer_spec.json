@@ -1,0 +1,71 @@
+{
+  "task": "syntactic_structure_recovery",
+  "description": "Recover canonical program structure from obfuscated finite-state programs",
+  "architecture": {
+    "type": "cnn_transformer",
+    "embedding": {
+      "vocab_size": 51,
+      "d_model": 32
+    },
+    "cnn_frontend": [
+      {
+        "type": "conv1d",
+        "in_channels": 32,
+        "out_channels": 32,
+        "kernel_size": 3
+      },
+      {
+        "type": "relu"
+      },
+      {
+        "type": "layer_norm",
+        "dim": 32
+      },
+      {
+        "type": "conv1d",
+        "in_channels": 32,
+        "out_channels": 32,
+        "kernel_size": 3
+      },
+      {
+        "type": "relu"
+      },
+      {
+        "type": "layer_norm",
+        "dim": 32
+      }
+    ],
+    "transformer": {
+      "n_layers": 2,
+      "n_heads": 4,
+      "d_model": 32,
+      "d_ff": 64
+    },
+    "output": {
+      "type": "linear",
+      "d_model": 32,
+      "vocab_size": 51
+    }
+  },
+  "input_format": "tokenized program lines",
+  "output_format": "canonical program lines",
+  "operations": [
+    "add",
+    "sub",
+    "mov",
+    "if_gt",
+    "if_eq",
+    "if_lt",
+    "halt",
+    "inc",
+    "dec"
+  ],
+  "variables": [
+    "x",
+    "y",
+    "z",
+    "a",
+    "b",
+    "c"
+  ]
+}

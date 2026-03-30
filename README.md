@@ -120,6 +120,8 @@ blk.0.ffn_gate.weight                Q4_0  [2048, 5632]     6.2 MB
 
 ## Benchmark
 
+### RNN Decompilation
+
 | Task | Hidden Dim | Verify | % Integer |
 |------|-----------|--------|-----------|
 | parity3 | 3 | 8/8 | **100%** |
@@ -132,6 +134,26 @@ blk.0.ffn_gate.weight                Q4_0  [2048, 5632]     6.2 MB
 | max4 | 2 | 16/16 | 96% |
 | max5 | 2 | 25/25 | 94% |
 | bitwise_xor | 3 | 16/16 | 47% |
+
+### Transformer Decompilation
+
+| Task | Architecture | Verify | Notes |
+|------|--------------|--------|-------|
+| parity_transformer | 1-layer, 2-head | 8/8 **100%** | Trained via random search |
+| mod3_add (RNN) | 3-neuron RNN | 9/9 **100%** | RNN baseline for comparison |
+
+### CNN-Transformer Hybrid (New Task)
+
+**Task**: Syntactic structure recovery — recover canonical program structure from obfuscated input.
+
+**Input**: `["if x>0 goto 2", "add 1 y", ...]` (obfuscated variables, irregular spacing)
+**Output**: Canonical form with normalized variable names, indentation, etc.
+
+**Architecture**: `tokens → embed → 1D-Conv → LayerNorm → Transformer`
+
+This mimics CNN-transformer hybrids used in speech/NLP where CNNs pre-filter temporal features before the transformer processes sequence relationships.
+
+See `examples/cnn_transformer_spec.json` for the full architecture specification.
 
 ## Research Background
 
