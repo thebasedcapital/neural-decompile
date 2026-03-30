@@ -313,6 +313,126 @@ fn compute_block_entropy(blocks: &[[u8; 32]]) -> BlockEntropy {
     }
 }
 
+/// Per-head entropy analysis for attention projection tensors.
+/// Splits the Q4_0 blocks by head and computes per-head block entropy.
+#[derive(Debug, Clone)]
+pub struct HeadEntropy {
+    pub head_idx: usize,
+    pub mean_entropy: f64,
+    pub min_entropy: f64,
+    pub n_low_entropy_blocks: usize,
+    pub n_blocks: usize,
+    pub effective_levels: f64,
+    /// Max absolute dequantized weight in this head
+    pub max_abs: f64,
+}
+
+/// Compute per-head entropy by splitting nibble blocks according to head layout.
+/// Returns None if the tensor isn't an attention projection or head count can't be inferred.
+fn per_head_entropy(
+    gf: &GgufFile,
+    tensor_name: &str,
+    n_heads: usize,
+) -> Option<Vec<HeadEntropy>> {
+    let info = gf.find_tensor(tensor_name)?;
+    if info.dtype.name() != "Q4_0" || info.dims.len() < 2 {
+        return None;
+    }
+
+    // GGUF dims are reversed: dims[0]=cols(d_model), dims[1]=rows(out_dim)
+    let cols = info.dims[0] as usize;
+    let rows = info.dims[1] as usize;
+    if rows == 0 || n_heads == 0 || rows % n_heads != 0 {
+        return None;
+    }
+    let head_dim = rows / n_heads;
+    let blocks_per_row = cols / 32; // each Q4_0 block = 32 values
+
+    let all_blocks = gf.extract_q4_0_nibbles(tensor_name).ok()?;
+    let all_f32 = gf.extract_f32(tensor_name).ok()?;
+
+    let mut heads = Vec::with_capacity(n_heads);
+
+    for h in 0..n_heads {
+        let row_start = h * head_dim;
+        let row_end = row_start + head_dim;
+
+        // Collect blocks belonging to this head's rows
+        let mut head_blocks = Vec::new();
+        for r in row_start..row_end {
+            let block_start = r * blocks_per_row;
+            let block_end = block_start + blocks_per_row;
+            if block_end <= all_blocks.len() {
+                head_blocks.extend_from_slice(&all_blocks[block_start..block_end]);
+            }
+        }
+
+        // Compute entropy for this head's blocks
+        let be = compute_block_entropy(&head_blocks);
+
+        // Max abs weight for this head
+        let val_start = row_start * cols;
+        let val_end = row_end * cols;
+        let max_abs = if val_end <= all_f32.len() {
+            all_f32[val_start..val_end]
+                .iter()
+                .map(|w| w.abs())
+                .fold(0.0f32, f32::max) as f64
+        } else {
+            0.0
+        };
+
+        heads.push(HeadEntropy {
+            head_idx: h,
+            mean_entropy: be.mean_entropy,
+            min_entropy: be.min_entropy,
+            n_low_entropy_blocks: be.n_low_entropy_blocks,
+            n_blocks: be.n_total_blocks,
+            effective_levels: be.effective_levels,
+            max_abs,
+        });
+    }
+
+    Some(heads)
+}
+
+/// Try to infer the number of attention heads from GGUF metadata or tensor shapes.
+fn infer_n_heads(gf: &GgufFile) -> Option<usize> {
+    // Try standard GGUF metadata keys
+    for key in &[
+        "llama.attention.head_count",
+        "gpt2.attention.head_count",
+        "mpt.attention.head_count",
+        "falcon.attention.head_count",
+        "qwen2.attention.head_count",
+        "phi2.attention.head_count",
+        "gemma.attention.head_count",
+    ] {
+        if let Some(val) = gf.metadata.get(*key) {
+            return match val {
+                crate::gguf::MetaValue::Uint32(n) => Some(*n as usize),
+                crate::gguf::MetaValue::Int32(n) => Some(*n as usize),
+                crate::gguf::MetaValue::Uint64(n) => Some(*n as usize),
+                _ => None,
+            };
+        }
+    }
+
+    // Fallback: try architecture.attention.head_count
+    let arch = gf.metadata.get("general.architecture")
+        .and_then(|v| match v {
+            crate::gguf::MetaValue::String(s) => Some(s.as_str()),
+            _ => None,
+        })?;
+    let key = format!("{}.attention.head_count", arch);
+    match gf.metadata.get(&key) {
+        Some(crate::gguf::MetaValue::Uint32(n)) => Some(*n as usize),
+        Some(crate::gguf::MetaValue::Int32(n)) => Some(*n as usize),
+        Some(crate::gguf::MetaValue::Uint64(n)) => Some(*n as usize),
+        _ => None,
+    }
+}
+
 pub fn run_intmap(
     path: &Path,
     eps: f64,
@@ -395,12 +515,17 @@ pub fn run_intmap(
 
     // Deep analysis of top tensors
     if deep > 0 {
-        let top = report.tensors.iter().take(deep);
+        let n_heads = infer_n_heads(&gf);
+        if let Some(nh) = n_heads {
+            eprintln!("Detected {} attention heads", nh);
+        }
+
+        let top: Vec<_> = report.tensors.iter().take(deep).collect();
         println!("\n{}", "=".repeat(80));
         println!("DEEP ANALYSIS — top {} tensors", deep);
         println!("{}", "=".repeat(80));
 
-        for tm in top {
+        for tm in &top {
             println!("\n── {} ──", tm.name);
             println!("  Shape: {}  Type: {}  Elements: {}", tm.shape, tm.dtype, tm.n_elements);
             println!("  Near-int: {:.1}%  Ternary: {:.1}%  Zero: {:.1}%  Max|w|: {:.4}",
@@ -442,6 +567,47 @@ pub fn run_intmap(
                     println!("  Hotspot rows (>90% integer):");
                     for (row, pct) in &tm.row_hotspots {
                         println!("    row {:>5}: {:.1}%", row, pct);
+                    }
+                }
+            }
+
+            // Per-head entropy for attention projections
+            if let Some(nh) = n_heads {
+                let is_attn = tm.name.contains("attn_q") || tm.name.contains("attn_k") || tm.name.contains("attn_v");
+                if is_attn {
+                    if let Some(heads) = per_head_entropy(&gf, &tm.name, nh) {
+                        println!("  Per-head entropy ({} heads, head_dim={}):",
+                                 nh, tm.n_elements / nh / heads.first().map(|h| h.n_blocks * 32 / (tm.n_elements / nh)).unwrap_or(1));
+
+                        // Sort by entropy to find the most structured heads
+                        let mut sorted_heads = heads.clone();
+                        sorted_heads.sort_by(|a, b| a.mean_entropy.partial_cmp(&b.mean_entropy).unwrap());
+
+                        // Show all heads as a compact table
+                        println!("    {:>4} {:>8} {:>8} {:>7} {:>8}",
+                                 "HEAD", "ENTROPY", "EFF_LVL", "MAX|W|", "LOW_E%");
+                        for h in &sorted_heads {
+                            let pct_low = if h.n_blocks > 0 {
+                                h.n_low_entropy_blocks as f64 / h.n_blocks as f64 * 100.0
+                            } else { 0.0 };
+                            let marker = if h.mean_entropy < sorted_heads[0].mean_entropy + 0.05 { " ◀" } else { "" };
+                            println!("    {:>4} {:>8.3} {:>8.1} {:>7.3} {:>7.1}%{}",
+                                     h.head_idx, h.mean_entropy, h.effective_levels, h.max_abs, pct_low, marker);
+                        }
+
+                        // Highlight the outlier
+                        let mean_ent: f64 = heads.iter().map(|h| h.mean_entropy).sum::<f64>() / heads.len() as f64;
+                        let std_ent: f64 = (heads.iter().map(|h| (h.mean_entropy - mean_ent).powi(2)).sum::<f64>() / heads.len() as f64).sqrt();
+                        let min_head = &sorted_heads[0];
+                        let max_head = sorted_heads.last().unwrap();
+                        let z_score = (mean_ent - min_head.mean_entropy) / std_ent.max(1e-10);
+
+                        println!("    ── Summary: mean={:.3}, std={:.4}, range={:.3}..{:.3}",
+                                 mean_ent, std_ent, min_head.mean_entropy, max_head.mean_entropy);
+                        if z_score > 2.0 {
+                            println!("    ── HEAD {} IS A {:.1}σ OUTLIER (entropy {:.3} vs {:.3} mean) — potentially decompilable!",
+                                     min_head.head_idx, z_score, min_head.mean_entropy, mean_ent);
+                        }
                     }
                 }
             }
