@@ -1,0 +1,15 @@
+% neurips_2025.sty — minimal NeurIPS-compatible style
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{neurips_2025}[2025/01/01 NeurIPS 2025 style]
+\RequirePackage[margin=1in]{geometry}
+\RequirePackage{mathptmx}
+\renewcommand{\ttdefault}{cmtt}
+\renewcommand{\section}{\@startsection{section}{1}{\z@}%
+  {-2.5ex plus -1ex minus -.2ex}{1.5ex plus .2ex}{\large\bfseries}}
+\renewcommand{\subsection}{\@startsection{subsection}{2}{\z@}%
+  {-2ex plus -1ex minus -.2ex}{1ex plus .2ex}{\normalsize\bfseries}}
+\renewenvironment{abstract}{%
+  \begin{center}\textbf{Abstract}\end{center}
+  \begin{quotation}\small
+}{\end{quotation}\vspace{1em}}
+\endinput
