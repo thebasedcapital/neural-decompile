@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>TinyLlama Layer 0 K — All 32 Heads Decompiled</title>
+<style>
+body { font-family: 'SF Mono', 'Fira Code', monospace; background: #1a1a2e; color: #e0e0e0; margin: 0; padding: 20px; }
+h1 { color: #00ff88; }
+h2 { color: #f39c12; margin-top: 30px; }
+.meta { color: #888; }
+table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+th { background: #16213e; color: #00ff88; padding: 8px; text-align: left; position: sticky; top: 0; }
+td { padding: 6px 8px; border-bottom: 1px solid #2a2a4a; }
+tr:hover { background: #16213e; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tok { font-size: 0.85em; max-width: 300px; }
+.tok code { background: #2a2a4a; padding: 1px 4px; border-radius: 3px; }
+.rank { padding: 2px 8px; border-radius: 10px; color: #1a1a2e; font-weight: bold; font-size: 0.9em; }
+.summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
+.card { background: #16213e; padding: 15px; border-radius: 8px; }
+.card h3 { margin: 0 0 8px 0; color: #00ff88; }
+.card .big { font-size: 2em; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>TinyLlama Layer 0 K — Head Taxonomy</h1>
+<p class="meta">32 KV heads, head_dim=8, d_model=2048. Rank = SVD dimensions for 90% energy.</p>
+
+<div class="summary">
+    <div class="card">
+        <h3>Rank 1-2 Gates</h3>
+        <div class="big" style="color:#00ff88">11/32</div>
+        <p>Binary decisions: newlines, syntax, special tokens</p>
+    </div>
+    <div class="card">
+        <h3>Rank 3-4 Classifiers</h3>
+        <div class="big" style="color:#f39c12">14/32</div>
+        <p>Multi-class: punctuation type, language groups, whitespace</p>
+    </div>
+    <div class="card">
+        <h3>Rank 5+ Complex</h3>
+        <div class="big" style="color:#e74c3c">7/32</div>
+        <p>Rich representations: script classification, domain detection</p>
+    </div>
+</div>
+
+<table>
+<thead><tr>
+    <th>Head</th><th>Rank</th><th>SV1</th><th>SV1/SV2</th><th>Max|w|</th><th>Singular Values</th><th>Positive tokens</th><th>Negative tokens</th>
+</tr></thead>
+<tbody>
+<tr>
+        <td class="num"><b>6</b></td>
+        <td><span class="rank" style="background:#00ff88">1</span></td>
+        <td class="num">2.76</td>
+        <td class="num">4.7</td>
+        <td class="num">0.32</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=2.759"></span> <span style="display:inline-block;width:8px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.585"></span> <span style="display:inline-block;width:4px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.311"></span> <span style="display:inline-block;width:3px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.242"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.133"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.104"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.082"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.053"></span></td>
+        <td class="tok">+<code>
+</code>, <code>aktiv</code>, <code>finns</code></td>
+        <td class="tok">-<code>cdots</code>, <code>Introduction</code>, <code>dots</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>7</b></td>
+        <td><span class="rank" style="background:#00ff88">1</span></td>
+        <td class="num">2.87</td>
+        <td class="num">12.4</td>
+        <td class="num">0.196</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=2.873"></span> <span style="display:inline-block;width:3px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.232"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.117"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.09"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.074"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.043"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.035"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.031"></span></td>
+        <td class="tok">+<code>
+</code>, <code>aktiv</code>, <code>Diese</code></td>
+        <td class="tok">-<code>cdots</code>, <code>Introduction</code>, <code>dots</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>31</b></td>
+        <td><span class="rank" style="background:#00ff88">1</span></td>
+        <td class="num">4.06</td>
+        <td class="num">4.9</td>
+        <td class="num">0.484</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=4.061"></span> <span style="display:inline-block;width:8px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.831"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.216"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.163"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.108"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.099"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.085"></span> <span style="display:inline-block;width:2px;height:12px;background:#00ff88;margin:1px;border-radius:2px" title="SV=0.073"></span></td>
+        <td class="tok">+<code>listade</code>, <code>Alg</code>, <code>которые</code></td>
+        <td class="tok">-<code>를</code>, <code>ése</code>, <code>aniu</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>0</b></td>
+        <td><span class="rank" style="background:#00cc66">2</span></td>
+        <td class="num">3.12</td>
+        <td class="num">3.6</td>
+        <td class="num">0.301</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=3.117"></span> <span style="display:inline-block;width:10px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.856"></span> <span style="display:inline-block;width:5px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.428"></span> <span style="display:inline-block;width:5px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.4"></span> <span style="display:inline-block;width:3px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.246"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.215"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.139"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.127"></span></td>
+        <td class="tok">+<code>reh</code>, <code>instit</code>, <code>asympt</code></td>
+        <td class="tok">-<code>
+</code>, <code>ScrollView</code>, <code>setTimeout</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>1</b></td>
+        <td><span class="rank" style="background:#00cc66">2</span></td>
+        <td class="num">1.95</td>
+        <td class="num">1.9</td>
+        <td class="num">0.134</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=1.95"></span> <span style="display:inline-block;width:20px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=1.002"></span> <span style="display:inline-block;width:8px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.404"></span> <span style="display:inline-block;width:5px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.289"></span> <span style="display:inline-block;width:4px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.203"></span> <span style="display:inline-block;width:3px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.152"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.109"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.102"></span></td>
+        <td class="tok">+<code>reh</code>, <code>asympt</code>, <code>instit</code></td>
+        <td class="tok">-<code>
+</code>, <code>Diese</code>, <code>javafx</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>4</b></td>
+        <td><span class="rank" style="background:#00cc66">2</span></td>
+        <td class="num">1.78</td>
+        <td class="num">1.4</td>
+        <td class="num">0.229</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=1.785"></span> <span style="display:inline-block;width:29px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=1.321"></span> <span style="display:inline-block;width:13px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.6"></span> <span style="display:inline-block;width:5px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.261"></span> <span style="display:inline-block;width:4px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.194"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.127"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.108"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.084"></span></td>
+        <td class="tok">+<code>stell</code>, <code>forb</code>, <code>pity</code></td>
+        <td class="tok">-<code>&lt;/s&gt;</code>, <code>﻿</code>, <code>"?&gt;</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>10</b></td>
+        <td><span class="rank" style="background:#00cc66">2</span></td>
+        <td class="num">1.73</td>
+        <td class="num">2.3</td>
+        <td class="num">0.192</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=1.73"></span> <span style="display:inline-block;width:17px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.751"></span> <span style="display:inline-block;width:8px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.368"></span> <span style="display:inline-block;width:6px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.261"></span> <span style="display:inline-block;width:4px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.184"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.125"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.116"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.101"></span></td>
+        <td class="tok">+<code>asympt</code>, <code>_)</code>, <code>geldig</code></td>
+        <td class="tok">-<code>
+</code>, <code>apache</code>, <code>�</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>14</b></td>
+        <td><span class="rank" style="background:#00cc66">2</span></td>
+        <td class="num">2.77</td>
+        <td class="num">1.4</td>
+        <td class="num">0.559</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=2.771"></span> <span style="display:inline-block;width:28px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=2.004"></span> <span style="display:inline-block;width:9px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.671"></span> <span style="display:inline-block;width:6px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.45"></span> <span style="display:inline-block;width:4px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.304"></span> <span style="display:inline-block;width:3px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.247"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.182"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.156"></span></td>
+        <td class="tok">+<code>zu</code>, <code>ällor</code>, <code>mit</code></td>
+        <td class="tok">-<code>listade</code>, <code>dessen</code>, <code>daher</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>15</b></td>
+        <td><span class="rank" style="background:#00cc66">2</span></td>
+        <td class="num">3.71</td>
+        <td class="num">2.5</td>
+        <td class="num">0.559</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=3.71"></span> <span style="display:inline-block;width:15px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=1.461"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.257"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.141"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.128"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.123"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.116"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.088"></span></td>
+        <td class="tok">+<code>를</code>, <code>zu</code>, <code>:(</code></td>
+        <td class="tok">-<code>listade</code>, <code>endeav</code>, <code>складі</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>26</b></td>
+        <td><span class="rank" style="background:#00cc66">2</span></td>
+        <td class="num">2.57</td>
+        <td class="num">2.0</td>
+        <td class="num">0.361</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=2.567"></span> <span style="display:inline-block;width:20px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=1.287"></span> <span style="display:inline-block;width:7px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.468"></span> <span style="display:inline-block;width:6px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.403"></span> <span style="display:inline-block;width:3px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.254"></span> <span style="display:inline-block;width:3px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.233"></span> <span style="display:inline-block;width:3px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.197"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.192"></span></td>
+        <td class="tok">+<code>listade</code>, <code>складі</code>, <code>quelque</code></td>
+        <td class="tok">-<code>uit</code>, <code>éo</code>, <code>ällor</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>30</b></td>
+        <td><span class="rank" style="background:#00cc66">2</span></td>
+        <td class="num">3.62</td>
+        <td class="num">3.1</td>
+        <td class="num">0.543</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=3.621"></span> <span style="display:inline-block;width:13px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=1.177"></span> <span style="display:inline-block;width:6px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.58"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.174"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.159"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.133"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.11"></span> <span style="display:inline-block;width:2px;height:12px;background:#00cc66;margin:1px;border-radius:2px" title="SV=0.096"></span></td>
+        <td class="tok">+<code>listade</code>, <code>quelque</code>, <code>которые</code></td>
+        <td class="tok">-<code>piel</code>, <code>nehmer</code>, <code>aniu</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>2</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">1.48</td>
+        <td class="num">2.1</td>
+        <td class="num">0.173</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.484"></span> <span style="display:inline-block;width:19px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.718"></span> <span style="display:inline-block;width:16px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.601"></span> <span style="display:inline-block;width:11px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.415"></span> <span style="display:inline-block;width:6px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.243"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.134"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.105"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.084"></span></td>
+        <td class="tok">+<code>&lt;/s&gt;</code>, <code>"?&gt;</code>, <code>﻿</code></td>
+        <td class="tok">-<code>stell</code>, <code>忠</code>, <code>xf</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>3</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">1.41</td>
+        <td class="num">1.2</td>
+        <td class="num">0.18</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.406"></span> <span style="display:inline-block;width:34px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.216"></span> <span style="display:inline-block;width:15px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.559"></span> <span style="display:inline-block;width:9px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.338"></span> <span style="display:inline-block;width:7px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.252"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.167"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.125"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.086"></span></td>
+        <td class="tok">+<code>xf</code>, <code>xp</code>, <code>忠</code></td>
+        <td class="tok">-<code>&lt;/s&gt;</code>, <code>"?&gt;</code>, <code>﻿</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>5</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">1.9</td>
+        <td class="num">1.2</td>
+        <td class="num">0.43</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.897"></span> <span style="display:inline-block;width:33px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.602"></span> <span style="display:inline-block;width:17px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.842"></span> <span style="display:inline-block;width:11px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.555"></span> <span style="display:inline-block;width:9px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.45"></span> <span style="display:inline-block;width:5px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.244"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.173"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.096"></span></td>
+        <td class="tok">+<code>﻿</code>, <code>usepackage</code>, <code>Тре</code></td>
+        <td class="tok">-<code>stell</code>, <code>pity</code>, <code>пло</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>8</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">1.76</td>
+        <td class="num">2.2</td>
+        <td class="num">0.396</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.76"></span> <span style="display:inline-block;width:18px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.805"></span> <span style="display:inline-block;width:11px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.504"></span> <span style="display:inline-block;width:10px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.446"></span> <span style="display:inline-block;width:7px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.336"></span> <span style="display:inline-block;width:5px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.231"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.166"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.143"></span></td>
+        <td class="tok">+<code>складі</code>, <code>documentclass</code>, <code>который</code></td>
+        <td class="tok">-<code>،</code>, <code>:(</code>, <code>、</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>9</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">1.62</td>
+        <td class="num">2.0</td>
+        <td class="num">0.289</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.618"></span> <span style="display:inline-block;width:20px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.822"></span> <span style="display:inline-block;width:12px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.513"></span> <span style="display:inline-block;width:9px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.371"></span> <span style="display:inline-block;width:6px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.262"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.186"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.16"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.134"></span></td>
+        <td class="tok">+<code>„</code>, <code>++){</code>, <code>_)</code></td>
+        <td class="tok">-<code>
+</code>, <code>://</code>, <code>textcolor</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>12</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">1.28</td>
+        <td class="num">1.4</td>
+        <td class="num">0.23</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.281"></span> <span style="display:inline-block;width:27px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.894"></span> <span style="display:inline-block;width:20px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.644"></span> <span style="display:inline-block;width:10px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.35"></span> <span style="display:inline-block;width:6px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.22"></span> <span style="display:inline-block;width:5px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.174"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.094"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.09"></span></td>
+        <td class="tok">+<code>            </code>, <code>        </code>, <code>}\)</code></td>
+        <td class="tok">-<code>_</code>, <code>(_</code>, <code>=&</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>13</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">1.61</td>
+        <td class="num">1.2</td>
+        <td class="num">0.393</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.609"></span> <span style="display:inline-block;width:33px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.349"></span> <span style="display:inline-block;width:27px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.103"></span> <span style="display:inline-block;width:11px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.474"></span> <span style="display:inline-block;width:10px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.409"></span> <span style="display:inline-block;width:7px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.308"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.166"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.138"></span></td>
+        <td class="tok">+<code>（</code>, <code>:(</code>, <code>(&</code></td>
+        <td class="tok">-<code>documentclass</code>, <code>_)</code>, <code>enumerate</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>23</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">4.11</td>
+        <td class="num">1.3</td>
+        <td class="num">0.562</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=4.107"></span> <span style="display:inline-block;width:30px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=3.162"></span> <span style="display:inline-block;width:22px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=2.28"></span> <span style="display:inline-block;width:11px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.178"></span> <span style="display:inline-block;width:5px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.606"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.445"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.3"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.241"></span></td>
+        <td class="tok">+<code>�</code>, <code>esterni</code>, <code>}-\</code></td>
+        <td class="tok">-<code>﻿</code>, <code>?](</code>, <code>"?&gt;</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>24</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">3.25</td>
+        <td class="num">2.3</td>
+        <td class="num">0.613</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=3.246"></span> <span style="display:inline-block;width:17px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.4"></span> <span style="display:inline-block;width:11px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.929"></span> <span style="display:inline-block;width:7px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.583"></span> <span style="display:inline-block;width:5px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.406"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.277"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.229"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.175"></span></td>
+        <td class="tok">+<code>listade</code>, <code>geldig</code>, <code>scarcely</code></td>
+        <td class="tok">-<code>odkazy</code>, <code>ällor</code>, <code>нице</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>25</b></td>
+        <td><span class="rank" style="background:#f39c12">3</span></td>
+        <td class="num">2.98</td>
+        <td class="num">2.3</td>
+        <td class="num">0.48</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=2.981"></span> <span style="display:inline-block;width:17px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.321"></span> <span style="display:inline-block;width:12px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.928"></span> <span style="display:inline-block;width:6px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.45"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.336"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.274"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.219"></span> <span style="display:inline-block;width:2px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.182"></span></td>
+        <td class="tok">+<code>ällor</code>, <code>odkazy</code>, <code>owi</code></td>
+        <td class="tok">-<code>listade</code>, <code>quelque</code>, <code>nearly</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>11</b></td>
+        <td><span class="rank" style="background:#f39c12">4</span></td>
+        <td class="num">1.1</td>
+        <td class="num">1.1</td>
+        <td class="num">0.188</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.103"></span> <span style="display:inline-block;width:35px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.979"></span> <span style="display:inline-block;width:17px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.47"></span> <span style="display:inline-block;width:13px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.364"></span> <span style="display:inline-block;width:10px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.287"></span> <span style="display:inline-block;width:7px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.205"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.127"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.119"></span></td>
+        <td class="tok">+<code>asympt</code>, <code>icina</code>, <code>stell</code></td>
+        <td class="tok">-<code>
+</code>, <code>Diese</code>, <code>ActivityThread</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>19</b></td>
+        <td><span class="rank" style="background:#f39c12">4</span></td>
+        <td class="num">4.61</td>
+        <td class="num">1.6</td>
+        <td class="num">0.785</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=4.614"></span> <span style="display:inline-block;width:25px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=2.913"></span> <span style="display:inline-block;width:17px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=2.07"></span> <span style="display:inline-block;width:14px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.682"></span> <span style="display:inline-block;width:11px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.291"></span> <span style="display:inline-block;width:10px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.16"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.565"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.517"></span></td>
+        <td class="tok">+<code>�</code>, <code>janu</code>, <code>númer</code></td>
+        <td class="tok">-<code>&lt;/s&gt;</code>, <code>﻿</code>, <code>](#</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>27</b></td>
+        <td><span class="rank" style="background:#f39c12">4</span></td>
+        <td class="num">1.84</td>
+        <td class="num">1.6</td>
+        <td class="num">0.287</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.839"></span> <span style="display:inline-block;width:25px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.16"></span> <span style="display:inline-block;width:23px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.076"></span> <span style="display:inline-block;width:21px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.008"></span> <span style="display:inline-block;width:8px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.4"></span> <span style="display:inline-block;width:7px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.357"></span> <span style="display:inline-block;width:6px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.284"></span> <span style="display:inline-block;width:4px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.22"></span></td>
+        <td class="tok">+<code>listade</code>, <code>ไ</code>, <code>hspace</code></td>
+        <td class="tok">-<code>љашње</code>, <code>uit</code>, <code>hadn</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>28</b></td>
+        <td><span class="rank" style="background:#f39c12">4</span></td>
+        <td class="num">1.81</td>
+        <td class="num">1.5</td>
+        <td class="num">0.312</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.81"></span> <span style="display:inline-block;width:26px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=1.208"></span> <span style="display:inline-block;width:16px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.769"></span> <span style="display:inline-block;width:12px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.588"></span> <span style="display:inline-block;width:11px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.527"></span> <span style="display:inline-block;width:8px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.384"></span> <span style="display:inline-block;width:6px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.276"></span> <span style="display:inline-block;width:3px;height:12px;background:#f39c12;margin:1px;border-radius:2px" title="SV=0.165"></span></td>
+        <td class="tok">+<code>quelque</code>, <code>considerable</code>, <code>nearly</code></td>
+        <td class="tok">-<code>љашње</code>, <code>odkazy</code>, <code>ії</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>16</b></td>
+        <td><span class="rank" style="background:#e74c3c">5</span></td>
+        <td class="num">4.18</td>
+        <td class="num">1.1</td>
+        <td class="num">0.637</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=4.179"></span> <span style="display:inline-block;width:36px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=3.862"></span> <span style="display:inline-block;width:30px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=3.177"></span> <span style="display:inline-block;width:21px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.208"></span> <span style="display:inline-block;width:14px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.534"></span> <span style="display:inline-block;width:11px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.245"></span> <span style="display:inline-block;width:8px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.913"></span> <span style="display:inline-block;width:8px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.869"></span></td>
+        <td class="tok">+<code>zar</code>, <code>представ</code>, <code>.:</code></td>
+        <td class="tok">-<code>„</code>, <code>"...</code>, <code>‘</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>17</b></td>
+        <td><span class="rank" style="background:#e74c3c">5</span></td>
+        <td class="num">3.79</td>
+        <td class="num">1.4</td>
+        <td class="num">0.77</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=3.787"></span> <span style="display:inline-block;width:27px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.621"></span> <span style="display:inline-block;width:24px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.348"></span> <span style="display:inline-block;width:18px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.755"></span> <span style="display:inline-block;width:13px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.251"></span> <span style="display:inline-block;width:12px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.14"></span> <span style="display:inline-block;width:8px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.786"></span> <span style="display:inline-block;width:7px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.708"></span></td>
+        <td class="tok">+<code>férences</code>, <code>galax</code>, <code>∑</code></td>
+        <td class="tok">-<code>ToList</code>, <code>‑</code>, <code>Hob</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>18</b></td>
+        <td><span class="rank" style="background:#e74c3c">5</span></td>
+        <td class="num">3.24</td>
+        <td class="num">1.2</td>
+        <td class="num">0.66</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=3.239"></span> <span style="display:inline-block;width:34px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.786"></span> <span style="display:inline-block;width:26px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.178"></span> <span style="display:inline-block;width:20px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.645"></span> <span style="display:inline-block;width:18px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.468"></span> <span style="display:inline-block;width:12px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.996"></span> <span style="display:inline-block;width:9px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.793"></span> <span style="display:inline-block;width:7px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.615"></span></td>
+        <td class="tok">+<code>$('</code>, <code>@",</code>, <code>aturing</code></td>
+        <td class="tok">-<code>références</code>, <code>férences</code>, <code>garant</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>20</b></td>
+        <td><span class="rank" style="background:#e74c3c">5</span></td>
+        <td class="num">3.7</td>
+        <td class="num">1.2</td>
+        <td class="num">1.055</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=3.697"></span> <span style="display:inline-block;width:32px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=3.038"></span> <span style="display:inline-block;width:27px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.571"></span> <span style="display:inline-block;width:24px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.229"></span> <span style="display:inline-block;width:14px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.377"></span> <span style="display:inline-block;width:14px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.314"></span> <span style="display:inline-block;width:10px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.929"></span> <span style="display:inline-block;width:4px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.411"></span></td>
+        <td class="tok">+<code>medi</code>, <code>вто</code>, <code>sake</code></td>
+        <td class="tok">-<code>﻿</code>, <code>springframework</code>, <code>Antoine</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>21</b></td>
+        <td><span class="rank" style="background:#e74c3c">5</span></td>
+        <td class="num">5.45</td>
+        <td class="num">1.5</td>
+        <td class="num">3.109</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=5.449"></span> <span style="display:inline-block;width:26px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=3.638"></span> <span style="display:inline-block;width:20px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.824"></span> <span style="display:inline-block;width:15px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.085"></span> <span style="display:inline-block;width:14px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.95"></span> <span style="display:inline-block;width:11px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.61"></span> <span style="display:inline-block;width:8px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.214"></span> <span style="display:inline-block;width:5px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.752"></span></td>
+        <td class="tok">+<code>stell</code>, <code>mir</code>, <code>morrow</code></td>
+        <td class="tok">-<code>lando</code>, <code>CollectionView</code>, <code>jQuery</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>22</b></td>
+        <td><span class="rank" style="background:#e74c3c">5</span></td>
+        <td class="num">3.62</td>
+        <td class="num">1.1</td>
+        <td class="num">2.453</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=3.619"></span> <span style="display:inline-block;width:36px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=3.269"></span> <span style="display:inline-block;width:30px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.773"></span> <span style="display:inline-block;width:22px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.012"></span> <span style="display:inline-block;width:18px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.703"></span> <span style="display:inline-block;width:12px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.167"></span> <span style="display:inline-block;width:12px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.155"></span> <span style="display:inline-block;width:6px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.601"></span></td>
+        <td class="tok">+<code>`.</code>, <code>(«</code>, <code>!!</code></td>
+        <td class="tok">-<code>ightarrow</code>, <code>indu</code>, <code>⊙</code></td>
+    </tr>
+<tr>
+        <td class="num"><b>29</b></td>
+        <td><span class="rank" style="background:#e74c3c">5</span></td>
+        <td class="num">2.15</td>
+        <td class="num">1.2</td>
+        <td class="num">0.504</td>
+        <td><span style="display:inline-block;width:40px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=2.153"></span> <span style="display:inline-block;width:32px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.748"></span> <span style="display:inline-block;width:24px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.318"></span> <span style="display:inline-block;width:21px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.163"></span> <span style="display:inline-block;width:19px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=1.043"></span> <span style="display:inline-block;width:13px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.704"></span> <span style="display:inline-block;width:6px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.331"></span> <span style="display:inline-block;width:4px;height:12px;background:#e74c3c;margin:1px;border-radius:2px" title="SV=0.22"></span></td>
+        <td class="tok">+<code>──</code>, <code>化</code>, <code>сии</code></td>
+        <td class="tok">-<code>listade</code>, <code>scarcely</code>, <code>afterwards</code></td>
+    </tr>
+
+</tbody>
+</table>
+
+<h2>Key Findings</h2>
+<ul>
+<li><b>Heads 6 &amp; 7</b> — Rank-1 gates detecting <code>\n</code> (newlines) vs LaTeX/math. Paragraph break detector.</li>
+<li><b>Head 15</b> — Rank-2 gate: syntax/operators vs natural language × morphological complexity.</li>
+<li><b>Head 21</b> — Rank-5 multi-script classifier (max|w|=3.109). The model's most extreme weight.</li>
+<li><b>Heads 2 &amp; 3</b> — Complementary pair: H2 detects EOS/BOM, H3 detects CJK. Opposite sign patterns.</li>
+<li><b>Head 12</b> — Whitespace structure detector (indentation depth vs underscores).</li>
+</ul>
+
+<p class="meta">Generated by nd intmap + Python SVD + HuggingFace tokenizer. Model: TinyLlama-1.1B-Chat-v1.0 Q4_0.</p>
+</body>
+</html>
