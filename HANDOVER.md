@@ -51,8 +51,8 @@ This is the fresh work. Key findings:
 **1. Layer 0 K projection is a 7.3σ entropy outlier.**
 Block entropy 2.508 bits vs 4.17 mean for layers 1-21. This isn't gradual — it's a phase transition between layer 0 and everything else.
 
-**2. V < Q < K entropy ordering is universal across all 22 layers.**
-V projections average 2.54 bits (most structured), Q = 3.30, K = 4.10. V carries output content and naturally learns sparser representations. This might be a structural invariant of trained transformers.
+**2. K ≤ Q < V on average — but NOT per-layer.**
+~~V<Q<K was originally claimed universal — this is WRONG.~~ Per-layer analysis shows K<Q<V is the dominant ordering (K most structured, V least). The cross-layer averages: K=3.317, Q=3.339, V=3.359. Confirmed across both TinyLlama and Llama-2-7B. See `results/cross-model-entropy.md`.
 
 **3. Head 2 of layer 0 K is a multi-script classifier.**
 The circuit reads ~7 specific embedding dimensions (out of 2048) to classify tokens by script type:
@@ -75,96 +75,150 @@ k[49] = -2.453*d411 + 0.617*d1454 + 0.617*d1447 + 0.543*d802 + ...  (12 terms, 6
 
 Full analysis in `DECOMPILED-HEAD.md`.
 
-## What to Do Next (Prioritized)
+## Future Plan
 
-### 1. Cross-model comparison (do this first)
+Three phases. Each phase has a **decision gate** — check the gate before moving on.
 
-**The question:** Is the layer-0 outlier and V<Q<K ordering universal, or specific to TinyLlama?
+### Phase 1: Prove Universality (1-2 sessions)
 
-**How:** Download Q4_0 GGUFs for 3-4 models with different architectures:
-- Qwen 2.5 0.5B (different tokenizer, different training data)
-- Phi-2 2.7B (Microsoft, heavily synthetic data)
-- Gemma 2B (Google, different attention variant)
-- Llama 2 7B (same family as TinyLlama but 7x larger)
+**Goal:** Determine if the entropy discoveries are a law or a TinyLlama coincidence.
 
-Run `nd intmap` on each. Compare:
-- Does layer 0 always have the lowest K entropy?
-- Does V<Q<K always hold?
-- Do the same embedding dimensions (411, 802, etc.) appear in other models?
-- Does head specialization (one head much larger than others) repeat?
+| Step | Task | Command / Method | Done when |
+|------|------|-----------------|-----------|
+| 1a | Download 3-4 Q4_0 GGUFs | HuggingFace: Qwen2.5-0.5B, Phi-2-2.7B, Gemma-2B, Llama-2-7B | Files in `~/models/` |
+| 1b | Run `nd intmap` on each | `nd intmap ~/models/<model>.gguf --deep 5` | Output saved to `results/<model>-intmap.txt` |
+| 1c | Compare entropy patterns | Manual or script: extract V/Q/K entropy per layer | Table in `results/cross-model.md` |
+| 1d | Check head specialization | Per-head max\|w\| analysis (Python — see Rust-Python gap below) | Per-model head heatmap |
 
-If the pattern is universal, it's a structural law worth publishing. If some models break it, the exceptions tell you something about architecture design.
+**Decision gate:** Do ≥3/4 models show V<Q<K ordering AND layer-0 K outlier?
+- **YES →** This is a structural law. Proceed to Phase 2 (verification) AND Phase 3 (paper) in parallel.
+- **PARTIAL →** Document which architectures break it and why. Still publishable as an empirical finding. Proceed to Phase 3.
+- **NO →** TinyLlama-specific artifact. Pivot: focus the paper on RNN formal verification (the Kani story). Skip Phase 2.
 
-**Effort:** Low — just download models and run the tool. Maybe half a day.
+**Llama 2 7B is already on disk** — start with that. It's the same architecture family, so if even this breaks the pattern, the universality claim is dead early.
 
-### 2. End-to-end circuit verification
+### Phase 2: End-to-End Circuit Verification (1 session)
 
-**The question:** Does the sparse decompiled circuit actually produce the same attention patterns as the dense original?
+**Goal:** Prove the sparse decompiled circuit is functionally equivalent to the dense original.
 
-**How:**
-1. Load TinyLlama in Python (llama.cpp or transformers)
-2. Extract blk.0 K projection for head 2
-3. Replace it with the sparse version (23 terms for k[46], 12 for k[49], etc.)
-4. Run inference on a test set
-5. Measure: attention pattern correlation, perplexity delta, downstream task accuracy
+| Step | Task | Method | Done when |
+|------|------|--------|-----------|
+| 2a | Build inference harness | `llama-cpp-python` or `transformers` loading TinyLlama | Can run forward pass, extract attention |
+| 2b | Extract dense K head 2 attention | Hook into blk.0 K projection, capture attention patterns on 100 prompts | Baseline attention matrix saved |
+| 2c | Build sparse replacement | 23-term k[46] + 12-term k[49] + remaining dims (from DECOMPILED-HEAD.md) | Sparse K projection matrix |
+| 2d | Swap and measure | Replace dense K head 2 with sparse, run same 100 prompts | Attention correlation, perplexity delta |
 
-If perplexity moves less than 0.1% — the decompilation is verified. That makes it publishable.
+**Decision gate:** Perplexity delta < 0.5% AND attention correlation > 0.95?
+- **YES →** Verified decompilation. This is the headline result.
+- **NO →** The sparse approximation loses too much. Try: (a) include more terms until it passes, (b) document how many terms are needed for functional equivalence.
 
-**Effort:** Medium — need an inference harness. Could use llama.cpp Python bindings.
+### Phase 3: The Paper (2-3 sessions)
 
-### 3. `nd autopsy` command
+**Working title:** "Neural Decompilation: From Weights to Readable Programs"
 
-**The product:** A single command that does everything we did manually:
+**Structure:**
+
+| Section | Content | Depends on |
+|---------|---------|-----------|
+| §1 Introduction | Decompilation framing, contributions list | — |
+| §2 Method | L1+quantize, STE 3-phase training, block entropy discovery | — |
+| §3 RNN Results | 13/13 tasks, Kani formal proofs, complement discovery | — |
+| §4 Scaling | Block entropy scan, V<Q<K ordering, layer-0 outlier | Phase 1 |
+| §5 LLM Decompilation | TinyLlama head = multi-script classifier, sparse circuit | — |
+| §6 Cross-Model | Universality results (or counterexamples) | Phase 1 |
+| §7 Verification | Sparse circuit ≈ dense (perplexity/attention) | Phase 2 |
+| §8 Discussion | What this means for interpretability | — |
+
+**Venue decision:**
+- Cross-model universality holds + verification passes → **ICML/NeurIPS main conference**
+- Partial universality or no verification → **Workshop** (Mechanistic Interpretability @ ICML, or Distill)
+- Neither → **arxiv preprint** (still novel: Kani proofs + L1 method + first LLM head decompiled)
+
+### Phase 4: `nd autopsy` — The Product (after paper draft)
+
+**Goal:** Turn manual analysis into a single command.
 
 ```bash
-nd autopsy model.gguf --tokenizer <path>
+nd autopsy model.gguf --tokenizer tokenizer.json
 ```
 
-Output: a directory of decompiled circuits for every low-entropy head, with:
-- Sparse weight decomposition
-- Token-level feature labels for each embedding dimension
-- Functional interpretation (script classifier, position encoder, etc.)
-- HTML visualization
+| Step | Task | Approach |
+|------|------|---------|
+| 4a | Add `tokenizers` crate | Rust: `tokenizers = "0.20"` — reads HF tokenizer.json natively |
+| 4b | Per-head entropy in Rust | Move Python head decomposition into `intmap.rs` — reshape tensor by n_heads, compute per-head stats |
+| 4c | Sparse term extraction | For each low-entropy head: find dims with \|w\| > threshold, emit sparse formula |
+| 4d | Token labeling | Decode token IDs through tokenizer, cluster by embedding dim activation sign |
+| 4e | HTML report | One page per decompiled head: circuit formula, token clusters, entropy context |
 
-This turns our one-off analysis into a reusable tool anyone can run.
+This closes the Rust-Python gap entirely. No Python needed.
 
-**Effort:** Medium-high — the sparse decomposition is Python (needs tokenizer), the entropy scan is Rust. Either bridge them or rewrite the analysis in Rust.
+### Stretch: MLP Neuron Extraction (speculative, timebox 1 day)
 
-### 4. MLP circuit extraction (speculative)
-
-FFN layers have most of the parameters. The intmap already shows they're higher entropy (~3.7 bits) than attention, but individual neurons might still be sparse. The approach:
-- For each FFN gate neuron, compute its activation on the embedding matrix
-- Find which tokens maximally activate each neuron
+FFN layers are ~3.7 bits entropy (higher than attention) but individual neurons might be sparse.
+- Compute each gate neuron's activation on the embedding matrix
+- Find max-activating tokens per neuron
 - Cluster neurons by activation pattern
-- Decompile the sparse ones
+- Decompile any that show <2.5 bit entropy
 
-Risk: MLP structure might be genuinely dense. Don't spend more than a day on this before deciding.
+**Kill criterion:** If no FFN neuron has entropy < 3.0 bits after 1 day of analysis, abandon this direction. MLP structure is genuinely dense.
 
-### 5. The paper
+## Source Architecture (8.8K LOC Rust, 20 modules)
 
-Working title: "Neural Decompilation: From Weights to Readable Programs"
+| Module | LOC | What |
+|--------|-----|------|
+| `emit.rs` | 1356 | Code generation: Python/Rust/Rust-Kani/table/circuit for both RNN and transformer |
+| `main.rs` | 882 | CLI entry point, 15 subcommands via clap derive |
+| `xray.rs` | 841 | Full circuit analysis with HTML reports |
+| `gguf.rs` | 732 | GGUF parser, Q4_0/Q8_0/F16/BF16/F32 dequant, nibble extraction |
+| `intmap.rs` | 690 | Block entropy, scale-aware grid search, HTML heatmap |
+| `trace.rs` | 514 | Hidden state tracing for RNN and transformer |
+| `evolve.rs` | 513 | Training evolution visualization across epoch snapshots |
+| `diagnose.rs` | 493 | Forensic analysis of quantization failures |
+| `slice.rs` | 387 | Dead neuron removal, minimal active subcircuit extraction |
+| `transformer.rs` | 350 | Transformer data structures and forward pass |
+| `patch.rs` | 347 | Compile decompiled Python back to weight matrices |
+| `verify.rs` | 330 | Test case verification for RNN and transformer |
+| `compare.rs` | 280 | Complement and shared structure detection between circuits |
+| `diff.rs` | 270 | Weight-by-weight semantic delta |
+| `quantize.rs` | 265 | Weight quantization (snap to integer grid) |
+| `taxonomy.rs` | 235 | Circuit family clustering |
+| `visualize.rs` | 157 | HTML rendering for traces |
+| `weights.rs` | 121 | Weight loading (JSON → NeuralProgram enum) |
+| `fsm.rs` | 38 | FSM state type |
 
-Story arc:
-1. RNN decompilation: 13/13 tasks, STE training, L1 beats MIPS normalizers
-2. Formal verification: Kani proofs for all possible inputs
-3. Scaling to real models: block entropy discovers layer-0 outlier
-4. First LLM head decompilation: sparse circuit with semantic labels
-5. Cross-model universality of V<Q<K ordering (needs step 1 above)
-6. End-to-end verification (needs step 2 above)
+Dependencies: `clap 4`, `ndarray 0.16`, `serde/serde_json`, `anyhow`, `memmap2 0.9`. No Python deps — pure Rust.
 
-Venue: ICML or NeurIPS 2026 workshop, or main conference if cross-model results are strong.
-
-## Files That Matter
+## Key Files
 
 | Path | What |
 |------|------|
-| `src/intmap.rs` | Block entropy + scale-aware grid analysis (690 LOC) |
-| `src/gguf.rs` | GGUF parser with Q4_0 nibble extraction |
-| `src/main.rs` | CLI entry point, 15 commands |
 | `DECOMPILED-HEAD.md` | Full writeup of the TinyLlama head decompilation |
 | `HANDOVER-KANI.md` | Instructions for Kani formal verification |
-| `tests/` | Parity transformer test cases, RNN weight files |
+| `BREAKTHROUGH_ANALYSIS.md` | Publication gap analysis (scale, relevance, surprise) |
+| `autoresearch_scenarios.md` | 6 eval scenarios with rubric (happy path → edge cases) |
+| `kani-proofs/` | Formal verification proofs (separate Cargo project) |
+| `examples/` | Weight files + test cases for RNN and transformer tasks |
+| `scripts/` | Python training scripts (STE, transformer, CNN-transformer) |
 | `~/Projects/research/mips-normalizers/` | Training scripts, STE, batch weights |
+
+## Build & Deploy
+
+```bash
+cd ~/Projects/neural-decompile
+cargo build --release
+cp target/release/nd ~/.local/bin/nd
+rm -rf target/  # clean up (binary is in ~/.local/bin)
+```
+
+## The Rust-Python Gap (Critical)
+
+The **Rust toolchain** handles: entropy scanning, GGUF parsing, tensor extraction, block-level analysis, HTML visualization.
+
+The **Python analysis** (done manually, not baked into `nd`) handles: per-head weight decomposition, sparse term extraction, token-level feature labeling via tokenizer. This is the part that produced the actual "multi-script classifier" interpretation.
+
+To close this gap, `nd autopsy` needs either:
+- A Rust tokenizer (tiktoken-rs or tokenizers crate) to label embedding dimensions
+- Or a Python sidecar script that `nd` shells out to
 
 ## Models on Disk
 
