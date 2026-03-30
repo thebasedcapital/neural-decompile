@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Figure 1: Layer 0 K Entropy Outlier</title>
+<style>
+body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #fff; color: #222; margin: 40px; max-width: 900px; }
+.chart { position: relative; height: 320px; margin: 20px 0; }
+.bar-group { display: flex; align-items: end; gap: 4px; position: absolute; bottom: 30px; }
+.bar { width: 28px; border-radius: 3px 3px 0 0; transition: height 0.3s; position: relative; }
+.bar .val { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #666; }
+.bar .label { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%) rotate(-45deg); font-size: 9px; white-space: nowrap; transform-origin: top left; }
+.axis-label { font-size: 12px; color: #444; }
+h2 { font-size: 16px; font-weight: 600; margin-bottom: 5px; }
+.caption { font-size: 11px; color: #666; line-height: 1.5; margin-top: 10px; }
+.legend { display: flex; gap: 20px; font-size: 11px; margin: 10px 0; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend .swatch { width: 12px; height: 12px; border-radius: 2px; }
+</style>
+</head><body>
+<h2>Figure 1. Layer 0 K projection entropy is a cross-model outlier</h2>
+<div class="legend">
+  <span><span class="swatch" style="background:#e74c3c"></span> Layer 0</span>
+  <span><span class="swatch" style="background:#bdc3c7"></span> Layers 1+</span>
+</div>
+
+<svg width="850" height="300" style="font-family: Helvetica Neue, Arial, sans-serif;">
+  <!-- TinyLlama -->
+  <text x="140" y="25" font-size="13" font-weight="600" text-anchor="middle">TinyLlama 1.1B</text>
+  <text x="10" y="160" font-size="10" fill="#888" transform="rotate(-90,10,160)">Block entropy (bits)</text>
+  
+  <!-- K bars -->
+  <text x="80" y="280" font-size="10" fill="#666">Q</text>
+  <text x="140" y="280" font-size="10" fill="#666">K</text>
+  <text x="200" y="280" font-size="10" fill="#666">V</text>
+  
+  <!-- Layer 0 -->
+  <rect x="65" y="95" width="30" height="139" fill="#e74c3c" rx="2"/>
+  <text x="80" y="88" font-size="9" fill="#e74c3c" text-anchor="middle">2.77</text>
+  
+  <rect x="125" y="58" width="30" height="176" fill="#e74c3c" rx="2"/>
+  <text x="140" y="51" font-size="9" fill="#e74c3c" text-anchor="middle" font-weight="bold">2.51</text>
+  
+  <rect x="185" y="167" width="30" height="67" fill="#e74c3c" rx="2"/>
+  <text x="200" y="160" font-size="9" fill="#e74c3c" text-anchor="middle">3.31</text>
+  
+  <!-- Mean line -->
+  <line x1="55" y1="173" x2="225" y2="173" stroke="#bdc3c7" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="230" y="177" font-size="9" fill="#999">mean</text>
+  
+  <!-- Llama-2 -->
+  <text x="420" y="25" font-size="13" font-weight="600" text-anchor="middle">Llama-2 7B</text>
+  
+  <text x="360" y="280" font-size="10" fill="#666">Q</text>
+  <text x="420" y="280" font-size="10" fill="#666">K</text>
+  <text x="480" y="280" font-size="10" fill="#666">V</text>
+  
+  <rect x="345" y="81" width="30" height="153" fill="#e74c3c" rx="2"/>
+  <text x="360" y="74" font-size="9" fill="#e74c3c" text-anchor="middle" font-weight="bold">2.84</text>
+  
+  <rect x="405" y="91" width="30" height="143" fill="#e74c3c" rx="2"/>
+  <text x="420" y="84" font-size="9" fill="#e74c3c" text-anchor="middle">2.95</text>
+  
+  <rect x="465" y="167" width="30" height="67" fill="#e74c3c" rx="2"/>
+  <text x="480" y="160" font-size="9" fill="#e74c3c" text-anchor="middle">3.37</text>
+  
+  <line x1="335" y1="175" x2="505" y2="175" stroke="#bdc3c7" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="510" y="179" font-size="9" fill="#999">mean</text>
+  
+  <!-- Qwen2.5 -->
+  <text x="680" y="25" font-size="13" font-weight="600" text-anchor="middle">Qwen2.5 0.5B</text>
+  
+  <text x="650" y="280" font-size="10" fill="#666">L0 std</text>
+  <text x="720" y="280" font-size="10" fill="#666">Mean std</text>
+  
+  <rect x="635" y="58" width="30" height="176" fill="#e74c3c" rx="2"/>
+  <text x="650" y="51" font-size="9" fill="#e74c3c" text-anchor="middle" font-weight="bold">0.081</text>
+  
+  <rect x="705" y="198" width="30" height="36" fill="#bdc3c7" rx="2"/>
+  <text x="720" y="191" font-size="9" fill="#999" text-anchor="middle">0.028</text>
+  
+  <text x="680" y="250" font-size="9" fill="#e74c3c" text-anchor="middle">4.3σ outlier</text>
+  
+  <!-- Axis -->
+  <line x1="50" y1="234" x2="770" y2="234" stroke="#ddd" stroke-width="1"/>
+</svg>
+
+<p class="caption"><b>Figure 1.</b> Layer 0 attention K projection weights are entropy outliers across three models from two architecture families. Red bars: layer 0 values. Dashed line: cross-layer mean. Q and K projections are 15–25% below mean; V is within 2%. TinyLlama layer 0 K is 7.3σ below mean (2.51 vs 3.32 bits). The pattern replicates in Llama-2 7B (Q = 2.84, 2.7σ) and Qwen2.5-0.5B (weight std 4.3σ above mean). Layer 0 encodes discrete routing; deeper layers use the full quantization palette.</p>
+</body></html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Figure 4: Interchange Intervention</title>
+<style>
+body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #fff; color: #222; margin: 40px; max-width: 900px; }
+h2 { font-size: 16px; font-weight: 600; }
+.caption { font-size: 11px; color: #666; line-height: 1.5; margin-top: 10px; }
+.metric { display: inline-block; background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px 20px; margin: 5px; text-align: center; }
+.metric .val { font-size: 24px; font-weight: 700; color: #2ecc71; }
+.metric .label { font-size: 11px; color: #888; margin-top: 4px; }
+</style>
+</head><body>
+<h2>Figure 4. Interchange intervention: sparse circuit replicates dense head</h2>
+<div style="display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0;">
+  <div class="metric">
+    <div class="val">0.0004</div>
+    <div class="label">KL Divergence</div>
+  </div>
+  <div class="metric">
+    <div class="val">97.6%</div>
+    <div class="label">Top-1 Agreement</div>
+  </div>
+  <div class="metric">
+    <div class="val">0.9999</div>
+    <div class="label">Logit Correlation</div>
+  </div>
+</div>
+
+<svg width="500" height="400" style="font-family: Helvetica Neue, Arial, sans-serif;">
+  <!-- Scatter: per-prompt metrics -->
+  <text x="250" y="20" font-size="13" font-weight="600" text-anchor="middle">Per-prompt KL divergence</text>
+  <line x1="60" y1="360" x2="460" y2="360" stroke="#ddd"/>
+  <line x1="60" y1="40" x2="60" y2="360" stroke="#ddd"/>
+  <text x="250" y="390" font-size="10" fill="#666" text-anchor="middle">Prompt index</text>
+  <text x="20" y="200" font-size="10" fill="#666" text-anchor="middle" transform="rotate(-90,20,200)">KL divergence</text>
+  <rect x="80" y="233" width="24" height="127" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="92" y="228" font-size="8" fill="#666" text-anchor="middle">0.0004</text>
+  <rect x="112" y="193" width="24" height="167" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="124" y="188" font-size="8" fill="#666" text-anchor="middle">0.0006</text>
+  <rect x="144" y="261" width="24" height="99" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="156" y="256" font-size="8" fill="#666" text-anchor="middle">0.0003</text>
+  <rect x="176" y="247" width="24" height="113" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="188" y="242" font-size="8" fill="#666" text-anchor="middle">0.0004</text>
+  <rect x="208" y="260" width="24" height="100" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="220" y="255" font-size="8" fill="#666" text-anchor="middle">0.0003</text>
+  <rect x="240" y="190" width="24" height="170" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="252" y="185" font-size="8" fill="#666" text-anchor="middle">0.0006</text>
+  <rect x="272" y="228" width="24" height="132" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="284" y="223" font-size="8" fill="#666" text-anchor="middle">0.0004</text>
+  <rect x="304" y="252" width="24" height="108" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="316" y="247" font-size="8" fill="#666" text-anchor="middle">0.0004</text>
+  <rect x="336" y="219" width="24" height="141" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="348" y="214" font-size="8" fill="#666" text-anchor="middle">0.0005</text>
+  <rect x="368" y="194" width="24" height="166" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="380" y="189" font-size="8" fill="#666" text-anchor="middle">0.0006</text>
+  <rect x="400" y="197" width="24" height="163" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="412" y="192" font-size="8" fill="#666" text-anchor="middle">0.0005</text>
+  <rect x="432" y="238" width="24" height="122" fill="#3498db" rx="2" opacity="0.8"/>
+  <text x="444" y="233" font-size="8" fill="#666" text-anchor="middle">0.0004</text>
+
+  <!-- Reference line at 0 -->
+  <line x1="60" y1="360" x2="460" y2="360" stroke="#2ecc71" stroke-width="2"/>
+  <text x="465" y="364" font-size="9" fill="#2ecc71">perfect (0)</text>
+</svg>
+
+<p class="caption"><b>Figure 4.</b> Interchange intervention results for 12 multilingual prompts. Replacing the dense K projection (16,384 weights) with the sparse circuit (441 weights, 2.7%) during a full 22-layer forward pass produces near-identical output: mean KL divergence = 4.5 × 10⁻⁴, top-1 agreement = 97.6%, logit correlation = 0.9999. Each bar shows the per-prompt KL divergence. All values are within 10⁻³, confirming the sparse circuit is a faithful causal replacement.</p>
+</body></html>
