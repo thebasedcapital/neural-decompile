@@ -4,7 +4,8 @@
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{hyperref}
-% \usepackage{cleveref}  % install texlive-full for this
+% cleveref not available — using manual refs
+\newcommand{\Cref}[1]{Figure~\ref{#1}}
 \usepackage{xcolor}
 \usepackage{enumitem}
 
@@ -144,7 +145,14 @@ regex\_match & 4 & 97\% & Test (128/128) & \\
 
 \subsection{Transformer Entropy Scan}
 
-We scanned 201 tensors in TinyLlama 1.1B and 291 tensors in Llama-2 7B \cite{llama2} using \texttt{nd intmap}. In both models, layer 0 attention projections are entropy outliers (Table~\ref{tab:entropy}). Layer 0 Q and K projections are 15--25\% below their cross-layer mean entropy. Layer 0 V projections are within 2\% of their mean. By layer 2, per-head entropy variance collapses: layer 0 heads span 1.824--2.924 bits ($\sigma = 0.305$), while layer 2 heads span 3.196--3.373 bits ($\sigma = 0.046$), a $6.6\times$ reduction.
+We scanned 201 tensors in TinyLlama 1.1B and 291 tensors in Llama-2 7B \cite{llama2} using \texttt{nd intmap}. In both models, layer 0 attention projections are entropy outliers (Table~\ref{tab:entropy}). Layer 0 Q and K projections are 15--25\% below their cross-layer mean entropy. Layer 0 V projections are within 2\% of their mean (\Cref{fig:entropy}). By layer 2, per-head entropy variance collapses: layer 0 heads span 1.824--2.924 bits ($\sigma = 0.305$), while layer 2 heads span 3.196--3.373 bits ($\sigma = 0.046$), a $6.6\times$ reduction.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{fig1.pdf}
+\caption{Layer 0 attention K projection weights are entropy outliers across three models from two architecture families. Red bars: layer 0 values. Gray bars: cross-layer mean. Q and K projections are 15--25\% below mean; V is within 2\%.}
+\label{fig:entropy}
+\end{figure}
 
 \begin{table}[t]
 \centering
@@ -164,7 +172,14 @@ Qwen2.5 0.5B & 0.081 std & 0.028 std & 4.3$\sigma$ \\
 
 \subsection{Head Taxonomy}
 
-Per-head SVD decomposition of all 32 KV heads in TinyLlama layer 0 K reveals a structured distribution: 11 heads (34\%) are rank 1--2 gates implementing binary routing decisions, 14 heads (44\%) are rank 3--4 classifiers, and 7 heads (22\%) are rank 5+ complex representations. Heads 6 and 7 are near-duplicate rank-1 gates (cosine similarity 0.992) detecting newlines vs.\ LaTeX/math tokens---the model copies one feature detector into two heads for multi-path routing. Heads 2 and 3 are complementary: H2 detects EOS/BOM tokens, H3 detects CJK tokens, with opposite sign patterns.
+Per-head SVD decomposition of all 32 KV heads in TinyLlama layer 0 K reveals a structured distribution: 11 heads (34\%) are rank 1--2 gates implementing binary routing decisions, 14 heads (44\%) are rank 3--4 classifiers, and 7 heads (22\%) are rank 5+ complex representations. Heads 6 and 7 are near-duplicate rank-1 gates (cosine similarity 0.992) detecting newlines vs.\ LaTeX/math tokens---the model copies one feature detector into two heads for multi-path routing. Heads 2 and 3 are complementary: H2 detects EOS/BOM tokens, H3 detects CJK tokens, with opposite sign patterns (\Cref{fig:taxonomy}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.75\textwidth]{fig2.pdf}
+\caption{Taxonomy of all 32 KV heads in TinyLlama layer 0 K projection, classified by effective SVD rank (dimensions needed for 90\% energy). Rank 1--2 heads implement binary gates; rank 3--4 perform multi-class separation; rank 5+ encode rich representations.}
+\label{fig:taxonomy}
+\end{figure}
 
 \subsection{Circuit Decompilation: Head 21 (Multi-Script Classifier)}
 
@@ -200,12 +215,33 @@ Random weights (matched $\sigma$) & 2.56 & Specific learned weights required \\
 \end{tabular}
 \end{table}
 
-The full-weights and sparse-only conditions produce equivalent clustering (Fisher 5.94 vs.\ 5.66). Ablation reduces the Fisher ratio to zero, establishing causal necessity. Random weights produce weaker clustering (2.56), demonstrating that the specific learned weights matter. PCA shows PC1 (86.1\% variance) separates code/LaTeX (positive) from natural language (negative).
+The full-weights and sparse-only conditions produce equivalent clustering (Fisher 5.94 vs.\ 5.66). Ablation reduces the Fisher ratio to zero, establishing causal necessity. Random weights produce weaker clustering (2.56), demonstrating that the specific learned weights matter. PCA shows PC1 (86.1\% variance) separates code/LaTeX (positive) from natural language (negative), as shown in Figures~\ref{fig:clusters} and~\ref{fig:ablation}.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.72\textwidth]{fig3.pdf}
+\caption{PCA of Head 21 K projection activations on 72 prompts across 9 content categories. PC1 (86.1\% variance) separates code/LaTeX (right) from natural language (left). Fisher discriminant ratio = 5.94 (full weights) vs.\ 5.66 (sparse circuit with 2.7\% of weights).}
+\label{fig:clusters}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.65\textwidth]{fig5.pdf}
+\caption{Four-way causal ablation. The sparse circuit (2.7\% of weights) carries the full classification signal (Fisher 5.66 $\approx$ 5.94). Ablation destroys classification (Fisher = 0.00). Random weights produce weaker signal (2.56). Dashed lines: strong ($F>5$) and moderate ($F>1$) thresholds.}
+\label{fig:ablation}
+\end{figure}
 
 \subsection{Interchange Intervention}
 \label{sec:interchange}
 
-We replaced Head 21's dense K projection with the sparse circuit during a full forward pass through all 22 layers, on 12 multilingual prompts including script-transition sentences. The KL divergence between output distributions is $4.5 \times 10^{-4}$, the top predicted token matches 97.6\% of positions, and logit vectors correlate at $r = 0.9999$. The sparse circuit is a faithful causal replacement for the dense head.
+We replaced Head 21's dense K projection with the sparse circuit during a full forward pass through all 22 layers, on 12 multilingual prompts including script-transition sentences. The KL divergence between output distributions is $4.5 \times 10^{-4}$, the top predicted token matches 97.6\% of positions, and logit vectors correlate at $r = 0.9999$. The sparse circuit is a faithful causal replacement for the dense head (\Cref{fig:interchange}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.85\textwidth]{fig4.pdf}
+\caption{Interchange intervention: replacing the dense K projection (16,384 weights) with the sparse circuit (441 weights, 2.7\%) during a full 22-layer forward pass. Left: per-prompt KL divergence (all $< 10^{-3}$). Right: summary metrics. The sparse circuit produces near-identical model output.}
+\label{fig:interchange}
+\end{figure}
 
 \subsection{Cross-Architecture Replication}
 
