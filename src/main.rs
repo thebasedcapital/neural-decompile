@@ -15,6 +15,7 @@ mod patch;
 mod slice;
 mod transformer;
 mod xray;
+mod intmap;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -257,6 +258,33 @@ enum Commands {
         /// Output path
         #[arg(default_value = "test.gguf")]
         output: PathBuf,
+    },
+
+    /// Scan all tensors in a GGUF for integer structure — find hidden clean circuits
+    Intmap {
+        /// Path to GGUF file
+        #[arg()]
+        input: PathBuf,
+
+        /// Epsilon for "near integer" (default: 0.1)
+        #[arg(short, long, default_value = "0.1")]
+        eps: f64,
+
+        /// Only show tensors with >N% near-integer weights
+        #[arg(long, default_value = "5.0")]
+        min_pct: f64,
+
+        /// Output as HTML heatmap (opens in browser)
+        #[arg(long)]
+        html: bool,
+
+        /// Filter to specific layer types (attn_q, attn_k, attn_v, ffn_gate, ffn_up, ffn_down, etc.)
+        #[arg(long)]
+        filter: Option<String>,
+
+        /// Extract and deep-analyze the top N most-integer tensors
+        #[arg(long, default_value = "0")]
+        deep: usize,
     },
 }
 
@@ -845,6 +873,10 @@ fn main() -> Result<()> {
             gguf::create_test_gguf(&output)?;
             println!("Created test GGUF: {}", output.display());
             Ok(())
+        }
+
+        Commands::Intmap { input, eps, min_pct, html: html_flag, filter, deep } => {
+            intmap::run_intmap(&input, eps, min_pct, html_flag, filter.as_deref(), deep)
         }
     }
 }

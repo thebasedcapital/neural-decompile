@@ -537,6 +537,37 @@ impl GgufFile {
         };
         println!("Total tensor data: {}", total_str);
     }
+
+    /// Get raw Q4_0 nibble values (0..15) for a tensor. Returns per-block nibbles.
+    /// Each inner array has 32 nibbles (the block size).
+    pub fn extract_q4_0_nibbles(&self, name: &str) -> Result<Vec<[u8; 32]>> {
+        let info = self.find_tensor(name)
+            .with_context(|| format!("Tensor '{}' not found", name))?;
+        if info.dtype != GgmlType::Q4_0 {
+            bail!("Tensor '{}' is {:?}, not Q4_0", name, info.dtype);
+        }
+        let bytes = self.tensor_bytes(info)?;
+        let n = info.n_elements() as usize;
+        let block_bytes = 18usize; // 2 (f16 scale) + 16 (nibble bytes)
+        let n_blocks = (n + 31) / 32;
+        let mut result = Vec::with_capacity(n_blocks);
+
+        for bi in 0..n_blocks {
+            let boff = bi * block_bytes;
+            if boff + block_bytes > bytes.len() {
+                break;
+            }
+            let mut nibbles = [0u8; 32];
+            for j in 0..16 {
+                let byte = bytes[boff + 2 + j];
+                nibbles[j] = byte & 0x0F;        // lo nibble
+                nibbles[j + 16] = (byte >> 4) & 0x0F; // hi nibble
+            }
+            result.push(nibbles);
+        }
+
+        Ok(result)
+    }
 }
 
 /// Convert IEEE 754 half-precision (f16) to f32
