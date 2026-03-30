@@ -1,6 +1,11 @@
 # nd — Neural Decompiler
 
-A Rust CLI that auto-decompiles neural network weights into readable code.
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19339860.svg)](https://doi.org/10.5281/zenodo.19339860)
+
+A Rust CLI that extracts readable, verified sparse circuits from neural network weights.
+
+**Paper:** [Neural Decompilation: Extracting Verified Sparse Circuits from Transformer Weights](https://doi.org/10.5281/zenodo.19339860) (Bhatia, 2026)
+**Discussion:** [LessWrong post](https://www.lesswrong.com/posts/MgydourqbPxopHSyC/neural-decompilation-we-decompiled-an-llm-attention-head)
 
 Feed it trained RNN weights. It quantizes them to integers and emits a readable Python or Rust program that does the same thing.
 
