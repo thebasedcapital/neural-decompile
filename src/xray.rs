@@ -1,9 +1,10 @@
 use crate::emit;
-use crate::quantize::{self, QuantizedRnn};
+use crate::quantize::{self, QuantizedRnn, QuantizedTransformer};
 use crate::slice;
-use crate::trace::{self, Trace};
-use crate::verify::{self, TestCase};
+use crate::trace::{self, Trace, TransformerTrace};
+use crate::verify::TestCase;
 use crate::weights::RnnWeights;
+use crate::transformer::Transformer;
 
 /// Full X-ray analysis of a neural circuit
 pub struct XrayReport {
@@ -632,6 +633,209 @@ pub fn format_xray(report: &XrayReport) -> String {
 
     out.push_str("\n");
     out.push_str(&report.python_code);
+
+    out
+}
+
+// ============================================================================
+// Transformer Xray
+// ============================================================================
+
+/// Transformer X-ray report
+pub struct TransformerXrayReport {
+    pub name: String,
+    pub n_layers: usize,
+    pub d_model: usize,
+    pub vocab_size: usize,
+    pub max_seq_len: usize,
+    pub pct_integer: f64,
+    pub total_params: usize,
+    pub per_layer: Vec<TransformerLayerXray>,
+    pub python_code: String,
+}
+
+pub struct TransformerLayerXray {
+    pub layer_idx: usize,
+    pub n_heads: usize,
+    pub head_dim: usize,
+    pub d_ff: usize,
+    pub attention_sparsity: f64,  // % of near-zero attention weights
+    pub ffn_sparsity: f64,        // % of dead FFN neurons
+    pub avg_head_entropy: f64,    // avg attention entropy across heads
+}
+
+/// Run transformer xray analysis
+pub fn run_transformer_xray(t: &Transformer, name: &str, tests: Option<&[crate::verify::TransformerTest]>) -> TransformerXrayReport {
+    use crate::quantize::transformer_stats;
+
+    let quantized = crate::quantize::quantize_transformer(t, 0.001);
+    let stats = transformer_stats(&quantized);
+
+    // Analyze each layer
+    let mut per_layer = Vec::new();
+    for (li, layer) in t.layers.iter().enumerate() {
+        let _head_dim = t.d_model / layer.n_heads;
+
+        // Sample traces to compute attention statistics
+        let sample_tokens: Vec<Vec<usize>> = tests.map(|tcs| {
+            tcs.iter().take(10).map(|tc| tc.tokens.clone()).collect()
+        }).unwrap_or_else(|| {
+            vec![vec![0, 1], vec![1, 0], vec![0, 0], vec![1, 1]]
+        });
+
+        let mut total_attn_sparsity = 0.0_f64;
+        let mut total_entropy = 0.0_f64;
+        let mut trace_count = 0;
+        let max_seq_len = t.max_seq_len;
+
+        for tokens in &sample_tokens {
+            if tokens.len() <= max_seq_len {
+                let trace = trace::trace_transformer(t, tokens);
+                if let Some(layer_trace) = trace.layers.get(li) {
+                    for pattern in &layer_trace.attention_patterns {
+                        // Count near-zero attention weights
+                        let near_zero = pattern.weights.iter()
+                            .flat_map(|r| r.iter())
+                            .filter(|&&w| w < 0.01)
+                            .count();
+                        let total = pattern.weights.len() * pattern.weights[0].len();
+                        total_attn_sparsity += near_zero as f64 / total as f64;
+
+                        // Entropy: -sum(p * log(p))
+                        let entropy: f64 = pattern.weights.iter()
+                            .flat_map(|r| r.iter())
+                            .map(|&w| if w > 0.0 { -w * w.ln() } else { 0.0 })
+                            .sum::<f64>() / pattern.weights.len() as f64;
+                        total_entropy += entropy;
+                    }
+                    trace_count += layer_trace.attention_patterns.len();
+                }
+            }
+        }
+
+        let avg_attn_sparsity = if trace_count > 0 { total_attn_sparsity / trace_count as f64 } else { 0.0 };
+        let avg_entropy = if trace_count > 0 { total_entropy / trace_count as f64 } else { 0.0 };
+
+        // FFN sparsity from sample traces
+        let max_seq = t.max_seq_len;
+        let ffn_sparsity = sample_tokens.iter().filter(|tokens| tokens.len() <= max_seq)
+            .flat_map(|tokens| {
+                let trace = trace::trace_transformer(t, tokens);
+                trace.layers.get(li).map(|lt| {
+                    let dead: usize = lt.ffn_activations.iter()
+                        .flat_map(|f| f.iter())
+                        .filter(|&&a| a < 0.001)
+                        .count();
+                    let total = lt.ffn_activations.len() * lt.ffn_activations[0].len();
+                    dead as f64 / total as f64
+                })
+            })
+            .sum::<f64>() / sample_tokens.len().max(1) as f64;
+
+        let head_dim = t.d_model / layer.n_heads;
+        per_layer.push(TransformerLayerXray {
+            layer_idx: li,
+            n_heads: layer.n_heads,
+            head_dim,
+            d_ff: layer.d_ff,
+            attention_sparsity: avg_attn_sparsity,
+            ffn_sparsity,
+            avg_head_entropy: avg_entropy,
+        });
+    }
+
+    let total_params = stats.total_params;
+
+    TransformerXrayReport {
+        name: name.to_string(),
+        n_layers: t.n_layers,
+        d_model: t.d_model,
+        vocab_size: t.vocab_size,
+        max_seq_len: t.max_seq_len,
+        pct_integer: stats.pct_integer * 100.0,
+        total_params,
+        per_layer,
+        python_code: emit::emit_transformer_python(&quantized, name),
+    }
+}
+
+/// Render transformer xray as HTML
+pub fn render_transformer_html(report: &TransformerXrayReport) -> String {
+    let mut html = String::new();
+
+    html.push_str(&format!(r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>nd xray — {name}</title>
+<style>
+:root {{ --bg: #0d1117; --fg: #c9d1d9; --accent: #58a6ff; --green: #3fb950; --red: #f85149; --yellow: #d29922; --card: #161b22; --border: #30363d; --dim: #8b949e; --mono: 'SF Mono', monospace; }}
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{ background: var(--bg); color: var(--fg); font-family: var(--mono); font-size: 14px; padding: 24px; max-width: 1200px; margin: 0 auto; }}
+h1 {{ color: var(--accent); font-size: 20px; margin-bottom: 4px; }}
+h2 {{ color: var(--accent); font-size: 16px; margin: 24px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }}
+.card {{ background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }}
+.grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }}
+.stat {{ text-align: center; }}
+.stat .value {{ font-size: 28px; font-weight: bold; }}
+.stat .label {{ color: var(--dim); font-size: 11px; text-transform: uppercase; margin-top: 2px; }}
+.green {{ color: var(--green); }} .red {{ color: var(--red); }} .yellow {{ color: var(--yellow); }}
+pre {{ background: #0d1117; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; }}
+</style>
+</head>
+<body>
+<h1>nd xray — {name}</h1>
+<div class="subtitle">Transformer Analysis Report</div>
+"#, name = report.name));
+
+    // Stats
+    let int_class = if report.pct_integer >= 95.0 { "green" } else if report.pct_integer >= 75.0 { "yellow" } else { "red" };
+    html.push_str(&format!(r#"
+<div class="grid">
+    <div class="card stat"><div class="value">{}</div><div class="label">Layers</div></div>
+    <div class="card stat"><div class="value">{}</div><div class="label">d_model</div></div>
+    <div class="card stat"><div class="value {}"{:.0}%</div><div class="label">Integer Weights</div></div>
+    <div class="card stat"><div class="value">{}</div><div class="label">Parameters</div></div>
+</div>
+"#, report.n_layers, report.d_model, int_class, report.pct_integer, report.total_params));
+
+    // Per-layer analysis
+    html.push_str("<h2>Layer Analysis</h2>\n");
+    for layer in &report.per_layer {
+        html.push_str(&format!(r#"
+<div class="card">
+    <h3>Layer {}</h3>
+    <p>{} heads × {} dims | FFN: {} → {} → {}</p>
+    <p>Attention sparsity: {:.1}% | FFN sparsity: {:.1}% | Avg head entropy: {:.2}</p>
+</div>
+"#, layer.layer_idx, layer.n_heads, layer.head_dim, report.d_model, layer.d_ff, report.d_model,
+            layer.attention_sparsity * 100.0, layer.ffn_sparsity * 100.0, layer.avg_head_entropy));
+    }
+
+    // Code
+    html.push_str("<h2>Decompiled Code</h2>\n<pre><code>");
+    let escaped = report.python_code.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    html.push_str(&escaped);
+    html.push_str("</code></pre>\n</body></html>");
+
+    html
+}
+
+/// Format plain-text transformer xray
+pub fn format_transformer_xray(report: &TransformerXrayReport) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("═══ TRANSFORMER XRAY: {} ═══\n", report.name));
+    out.push_str(&format!("  layers={} d_model={} vocab={} seq_len={}\n",
+        report.n_layers, report.d_model, report.vocab_size, report.max_seq_len));
+    out.push_str(&format!("  params={} integer={:.0}%\n\n", report.total_params, report.pct_integer));
+
+    out.push_str("── Per-Layer Analysis ──\n");
+    for layer in &report.per_layer {
+        out.push_str(&format!("  L{}: {} heads × {} dims, FFN {}\n",
+            layer.layer_idx, layer.n_heads, layer.head_dim, layer.d_ff));
+        out.push_str(&format!("      attn_sparsity={:.1}% ffn_sparsity={:.1}% entropy={:.2}\n",
+            layer.attention_sparsity * 100.0, layer.ffn_sparsity * 100.0, layer.avg_head_entropy));
+    }
 
     out
 }

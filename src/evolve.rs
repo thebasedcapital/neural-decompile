@@ -1,5 +1,4 @@
-use crate::quantize::{self, QuantizedRnn};
-use crate::slice;
+use crate::quantize;
 use crate::trace;
 use crate::verify::{self, TestCase};
 use crate::weights::RnnWeights;

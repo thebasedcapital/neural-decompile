@@ -1,5 +1,4 @@
 use anyhow::{bail, Context, Result};
-use ndarray::Array2;
 use std::path::Path;
 
 /// Parsed decompiled program — ready to convert back to weight matrices

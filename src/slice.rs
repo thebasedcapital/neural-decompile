@@ -1,6 +1,7 @@
-use crate::quantize::QuantizedRnn;
-use crate::trace::{trace_quantized, Trace};
+use crate::quantize::{QuantizedRnn, QuantizedTransformer, QuantizedLayer};
+use crate::trace::{trace_quantized, Trace, trace_transformer, TransformerTrace};
 use crate::verify::TestCase;
+use crate::transformer::Transformer;
 use ndarray::Array2;
 
 /// Result of slicing: a smaller circuit + metadata about what was removed
@@ -224,6 +225,163 @@ pub fn format_slice(result: &SliceResult) -> String {
         new_params,
         ratio * 100.0
     ));
+
+    out
+}
+
+// ============================================================================
+// Transformer slicing — identify dead heads, dead FFN neurons
+// ============================================================================
+
+/// Result of slicing a transformer
+#[derive(Debug)]
+pub struct TransformerSliceResult {
+    /// Number of active attention heads per layer [layer][head_idx]
+    pub active_heads: Vec<Vec<bool>>,
+    /// Number of dead FFN neurons per layer [layer][neuron_idx]
+    pub dead_ffn_neurons: Vec<Vec<bool>>,
+    /// Total parameters before slicing
+    pub total_params: usize,
+    /// Total parameters after removing dead components
+    pub sliced_params: usize,
+    /// Number of traces analyzed
+    pub num_traces: usize,
+}
+
+/// Slice a transformer by analyzing which components are active
+pub fn slice_transformer(t: &Transformer, token_sequences: &[Vec<usize>]) -> TransformerSliceResult {
+    let n_layers = t.n_layers;
+    let mut active_heads: Vec<Vec<bool>> = Vec::with_capacity(n_layers);
+    let mut ffn_max_activations: Vec<Vec<f64>> = Vec::with_capacity(n_layers);
+
+    // Initialize tracking structures
+    for layer in &t.layers {
+        active_heads.push(vec![false; layer.n_heads]);
+        ffn_max_activations.push(vec![0.0; layer.d_ff]);
+    }
+
+    // Analyze each input sequence
+    for tokens in token_sequences {
+        let trace = trace_transformer(t, tokens);
+
+        for (li, layer_trace) in trace.layers.iter().enumerate() {
+            // Track active attention heads
+            for (hi, pattern) in layer_trace.attention_patterns.iter().enumerate() {
+                let max_attn = pattern.weights.iter()
+                    .flat_map(|row| row.iter())
+                    .cloned()
+                    .fold(0.0_f64, f64::max);
+                if max_attn > 0.1 {
+                    active_heads[li][hi] = true;
+                }
+            }
+
+            // Track FFN activations (per-token, need to aggregate across tokens)
+            for token_acts in &layer_trace.ffn_activations {
+                for (ni, &act) in token_acts.iter().enumerate() {
+                    if ni < ffn_max_activations[li].len() {
+                        ffn_max_activations[li][ni] = ffn_max_activations[li][ni].max(act);
+                    }
+                }
+            }
+        }
+    }
+
+    // Determine dead FFN neurons
+    let dead_ffn_neurons: Vec<Vec<bool>> = ffn_max_activations.iter()
+        .map(|layer| layer.iter().map(|&m| m < 0.001).collect())
+        .collect();
+
+    // Calculate parameter counts
+    let total_params = calculate_transformer_params(t);
+    let sliced_params = calculate_sliced_params(t, &active_heads, &dead_ffn_neurons);
+
+    TransformerSliceResult {
+        active_heads,
+        dead_ffn_neurons,
+        total_params,
+        sliced_params,
+        num_traces: token_sequences.len(),
+    }
+}
+
+fn calculate_transformer_params(t: &Transformer) -> usize {
+    let emb_params = t.vocab_size * t.d_model;
+    let pos_params = t.pos_emb.as_ref().map(|_| t.max_seq_len * t.d_model).unwrap_or(0);
+
+    let layer_params: usize = t.layers.iter().map(|l| {
+        // Attention: 4 * d_model * d_model (Q, K, V, O)
+        let attn = 4 * t.d_model * t.d_model;
+        // FFN: d_model * d_ff * 2 (in + out)
+        let ffn = t.d_model * l.d_ff + l.d_ff * t.d_model;
+        attn + ffn
+    }).sum();
+
+    let output_params = t.d_model * t.vocab_size;
+
+    emb_params + pos_params + layer_params + output_params
+}
+
+fn calculate_sliced_params(
+    t: &Transformer,
+    active_heads: &[Vec<bool>],
+    dead_ffn: &[Vec<bool>],
+) -> usize {
+    let emb_params = t.vocab_size * t.d_model;
+    let pos_params = t.pos_emb.as_ref().map(|_| t.max_seq_len * t.d_model).unwrap_or(0);
+
+    let layer_params: usize = t.layers.iter().enumerate().map(|(li, l)| {
+        let head_dim = t.d_model / l.n_heads;
+        // Active heads only
+        let active_head_count = active_heads[li].iter().filter(|&&x| x).count();
+        // Each active head has Q, K, V projections + fraction of O
+        let attn_per_head = 3 * t.d_model * head_dim; // Q, K, V
+        let attn = (active_head_count * attn_per_head) + (t.d_model * t.d_model / l.n_heads * active_head_count);
+
+        // FFN with dead neurons removed
+        let live_ffn = dead_ffn[li].iter().filter(|&&x| !x).count();
+        let ffn = t.d_model * live_ffn + live_ffn * t.d_model;
+
+        attn + ffn
+    }).sum();
+
+    let output_params = t.d_model * t.vocab_size;
+
+    emb_params + pos_params + layer_params + output_params
+}
+
+/// Format transformer slice results
+pub fn format_transformer_slice(result: &TransformerSliceResult) -> String {
+    let mut out = String::new();
+
+    out.push_str("═══ TRANSFORMER SLICE ═══\n");
+    out.push_str(&format!("Analyzed {} input sequences\n\n", result.num_traces));
+
+    for (li, heads) in result.active_heads.iter().enumerate() {
+        let active = heads.iter().filter(|&&x| x).count();
+        let total = heads.len();
+        let dead_ffn = result.dead_ffn_neurons[li].iter().filter(|&&x| x).count();
+        let total_ffn = result.dead_ffn_neurons[li].len();
+
+        out.push_str(&format!("Layer {}:\n", li));
+        out.push_str(&format!("  Attention: {} of {} heads active", active, total));
+        if active < total {
+            let inactive: Vec<usize> = heads.iter().enumerate()
+                .filter(|(_, &active)| !active)
+                .map(|(i, _)| i)
+                .collect();
+            out.push_str(&format!(" (heads {:?} inactive)", inactive));
+        }
+        out.push('\n');
+        out.push_str(&format!("  FFN: {} of {} neurons dead ({:.1}% sparsity)\n",
+            dead_ffn, total_ffn,
+            100.0 * dead_ffn as f64 / total_ffn as f64));
+    }
+
+    let reduction = 1.0 - (result.sliced_params as f64 / result.total_params as f64);
+    out.push('\n');
+    out.push_str(&format!("Parameters: {} → {} ({:.1}% reduction)\n",
+        result.total_params, result.sliced_params, reduction * 100.0));
 
     out
 }

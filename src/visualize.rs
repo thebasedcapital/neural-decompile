@@ -39,7 +39,7 @@ pub fn trace_to_html(trace: &Trace, title: &str) -> String {
         .fold(1.0_f64, |acc, &v| acc.max(v));
 
     // Grid layout: timestep | input | h0 | h1 | ... | hN
-    let cols = 2 + trace.hidden_dim;
+    let _cols = 2 + trace.hidden_dim;
     html.push_str(&format!(r#"<div class="grid" style="grid-template-columns: 40px 60px repeat({}, 1fr);">"#, trace.hidden_dim));
 
     // Header row
@@ -89,7 +89,6 @@ pub fn trace_to_html(trace: &Trace, title: &str) -> String {
                 let t = (h / max_val).min(1.0);
                 if t < 0.5 {
                     // Low: blue shades
-                    let intensity = (t * 2.0 * 255.0) as u8;
                     (format!("rgba(122, 162, 247, {:.2})", 0.1 + t * 0.6), "#c0caf5".to_string())
                 } else {
                     // High: orange/gold
@@ -133,7 +132,7 @@ pub fn trace_to_html(trace: &Trace, title: &str) -> String {
 
     for (i, &logit) in trace.output_logits.iter().enumerate() {
         let width_pct = (logit.abs() / max_logit * 80.0).max(2.0);
-        let (color, direction) = if logit >= 0.0 {
+        let (color, _direction) = if logit >= 0.0 {
             if i == trace.prediction {
                 ("rgba(158, 206, 106, 0.7)", "left")
             } else {

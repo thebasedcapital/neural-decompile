@@ -57,3 +57,65 @@ pub fn load_rnn_weights(path: &Path) -> Result<RnnWeights> {
         hidden_dim, input_dim, output_dim,
     })
 }
+
+/// Detect model type from JSON structure
+pub fn detect_model_type(path: &Path) -> Result<ModelType> {
+    let data = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let value: serde_json::Value = serde_json::from_str(&data)
+        .context("Failed to parse JSON")?;
+
+    if value.get("token_emb").is_some() || value.get("layers").is_some() {
+        Ok(ModelType::Transformer)
+    } else if value.get("W_hh").is_some() || value.get("w_hh").is_some() {
+        Ok(ModelType::Rnn)
+    } else {
+        anyhow::bail!("Unknown model type: cannot detect RNN or Transformer structure")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ModelType {
+    Rnn,
+    Transformer,
+}
+
+/// Unified neural program that can be either RNN or Transformer
+#[derive(Debug, Clone)]
+pub enum NeuralProgram {
+    Rnn(RnnWeights),
+    Transformer(super::transformer::Transformer),
+}
+
+impl NeuralProgram {
+    pub fn input_dim(&self) -> usize {
+        match self {
+            NeuralProgram::Rnn(r) => r.input_dim,
+            NeuralProgram::Transformer(t) => t.d_model, // Token embedding dimension
+        }
+    }
+
+    pub fn output_dim(&self) -> usize {
+        match self {
+            NeuralProgram::Rnn(r) => r.output_dim,
+            NeuralProgram::Transformer(t) => t.vocab_size,
+        }
+    }
+
+    pub fn model_type(&self) -> ModelType {
+        match self {
+            NeuralProgram::Rnn(_) => ModelType::Rnn,
+            NeuralProgram::Transformer(_) => ModelType::Transformer,
+        }
+    }
+}
+
+/// Auto-detect and load either RNN or Transformer
+pub fn load_neural_program(path: &Path) -> Result<NeuralProgram> {
+    match detect_model_type(path)? {
+        ModelType::Rnn => Ok(NeuralProgram::Rnn(load_rnn_weights(path)?)),
+        ModelType::Transformer => Ok(NeuralProgram::Transformer(
+            super::transformer::Transformer::from_json(path)?
+        )),
+    }
+}

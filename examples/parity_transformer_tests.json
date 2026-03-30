@@ -1,0 +1,66 @@
+[
+  {
+    "tokens": [
+      0,
+      0,
+      0
+    ],
+    "expected": 0
+  },
+  {
+    "tokens": [
+      1,
+      0,
+      0
+    ],
+    "expected": 1
+  },
+  {
+    "tokens": [
+      0,
+      1,
+      0
+    ],
+    "expected": 1
+  },
+  {
+    "tokens": [
+      1,
+      1,
+      0
+    ],
+    "expected": 0
+  },
+  {
+    "tokens": [
+      0,
+      0,
+      1
+    ],
+    "expected": 1
+  },
+  {
+    "tokens": [
+      1,
+      0,
+      1
+    ],
+    "expected": 0
+  },
+  {
+    "tokens": [
+      0,
+      1,
+      1
+    ],
+    "expected": 0
+  },
+  {
+    "tokens": [
+      1,
+      1,
+      1
+    ],
+    "expected": 1
+  }
+]

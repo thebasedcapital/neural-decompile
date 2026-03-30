@@ -1,7 +1,8 @@
-use crate::quantize::QuantizedRnn;
-use crate::trace::{trace_quantized, trace_raw};
-use crate::verify::TestCase;
+use crate::quantize::{QuantizedRnn, QuantizedTransformer};
+use crate::trace::{trace_quantized, trace_raw, trace_transformer};
+use crate::verify::{TestCase, TransformerTest};
 use crate::weights::RnnWeights;
+use crate::transformer::Transformer;
 use crate::fsm;
 
 /// Diagnosis of a single failure case
@@ -323,6 +324,169 @@ pub fn format_diagnosis(report: &DiagnoseReport) -> String {
                     neuron, count, report.failures.len()));
             }
         }
+    }
+
+    out
+}
+
+// ============================================================================
+// Transformer diagnosis — analyze quantization effects on attention patterns
+// ============================================================================
+
+/// Diagnosis for a single transformer test case
+#[derive(Debug)]
+pub struct TransformerFailureDiagnosis {
+    pub tokens: Vec<usize>,
+    pub expected: usize,
+    pub raw_prediction: usize,
+    pub quantized_prediction: usize,
+    /// Per-layer attention divergence
+    pub layer_divergences: Vec<LayerDivergence>,
+    /// Max logit difference at output
+    pub output_divergence: f64,
+}
+
+#[derive(Debug)]
+pub struct LayerDivergence {
+    pub layer_idx: usize,
+    pub max_attn_diff: f64,
+    pub max_hidden_diff: f64,
+    /// Which heads diverged most
+    pub divergent_heads: Vec<usize>,
+}
+
+/// Run transformer diagnosis
+pub fn diagnose_transformer(
+    t: &Transformer,
+    tests: &[TransformerTest],
+) -> Vec<TransformerFailureDiagnosis> {
+    let mut failures = Vec::new();
+
+    for test in tests {
+        let raw_trace = trace_transformer(t, &test.tokens);
+        let quantized = crate::quantize::quantize_transformer(t, 0.001);  // minimal quant
+        // Re-run with quantized weights by tracing quantized version
+        let quant_t = Transformer {
+            n_layers: t.n_layers,
+            d_model: t.d_model,
+            vocab_size: t.vocab_size,
+            max_seq_len: t.max_seq_len,
+            token_emb: t.token_emb.clone(),
+            pos_emb: t.pos_emb.clone(),
+            layers: t.layers.iter().zip(quantized.layers.iter()).map(|(raw_l, q_l)| {
+                crate::transformer::TransformerBlock {
+                    d_model: raw_l.d_model,
+                    n_heads: raw_l.n_heads,
+                    d_ff: raw_l.d_ff,
+                    gelu: raw_l.gelu,
+                    w_q: q_l.w_q.clone(),
+                    w_k: q_l.w_k.clone(),
+                    w_v: q_l.w_v.clone(),
+                    w_o: q_l.w_o.clone(),
+                    b_q: q_l.b_q.clone(),
+                    b_k: q_l.b_k.clone(),
+                    b_v: q_l.b_v.clone(),
+                    b_o: q_l.b_o.clone(),
+                    w_ff_in: q_l.w_ff_in.clone(),
+                    b_ff_in: q_l.b_ff_in.clone(),
+                    w_ff_out: q_l.w_ff_out.clone(),
+                    b_ff_out: q_l.b_ff_out.clone(),
+                    ln1_gamma: q_l.ln1_gamma.clone(),
+                    ln1_beta: q_l.ln1_beta.clone(),
+                    ln2_gamma: q_l.ln2_gamma.clone(),
+                    ln2_beta: q_l.ln2_beta.clone(),
+                }
+            }).collect(),
+            ln_final_gamma: t.ln_final_gamma.clone(),
+            ln_final_beta: t.ln_final_beta.clone(),
+            w_out: t.w_out.clone(),
+            b_out: t.b_out.clone(),
+        };
+        let quant_trace = trace_transformer(&quant_t, &test.tokens);
+
+        let raw_pred = raw_trace.predictions.last().copied().unwrap_or(0);
+        let quant_pred = quant_trace.predictions.last().copied().unwrap_or(0);
+
+        if quant_pred != test.expected || raw_pred != quant_pred {
+            // Analyze layer-by-layer divergence
+            let mut layer_divergences = Vec::new();
+            for (li, (raw_l, quant_l)) in raw_trace.layers.iter().zip(quant_trace.layers.iter()).enumerate() {
+                let max_attn_diff = raw_l.attention_patterns.iter().zip(quant_l.attention_patterns.iter())
+                    .map(|(r, q)| {
+                        r.weights.iter().zip(q.weights.iter())
+                            .flat_map(|(rw, qw)| rw.iter().zip(qw.iter()))
+                            .map(|(rv, qv)| (rv - qv).abs())
+                            .fold(0.0_f64, f64::max)
+                    })
+                    .fold(0.0_f64, f64::max);
+
+                let max_hidden_diff = raw_l.hidden.iter().zip(quant_l.hidden.iter())
+                    .flat_map(|(rh, qh)| rh.iter().zip(qh.iter()))
+                    .map(|(rv, qv)| (rv - qv).abs())
+                    .fold(0.0_f64, f64::max);
+
+                let divergent_heads: Vec<usize> = raw_l.attention_patterns.iter().zip(quant_l.attention_patterns.iter())
+                    .enumerate()
+                    .filter(|(_, (r, q))| {
+                        r.weights.iter().zip(q.weights.iter())
+                            .flat_map(|(rw, qw)| rw.iter().zip(qw.iter()))
+                            .map(|(rv, qv)| (rv - qv).abs())
+                            .any(|d| d > 0.01)
+                    })
+                    .map(|(i, _)| i)
+                    .collect();
+
+                layer_divergences.push(LayerDivergence {
+                    layer_idx: li,
+                    max_attn_diff,
+                    max_hidden_diff,
+                    divergent_heads,
+                });
+            }
+
+            let output_divergence = raw_trace.output_logits.last().unwrap().iter()
+                .zip(quant_trace.output_logits.last().unwrap().iter())
+                .map(|(r, q)| (r - q).abs())
+                .fold(0.0_f64, f64::max);
+
+            failures.push(TransformerFailureDiagnosis {
+                tokens: test.tokens.clone(),
+                expected: test.expected,
+                raw_prediction: raw_pred,
+                quantized_prediction: quant_pred,
+                layer_divergences,
+                output_divergence,
+            });
+        }
+    }
+
+    failures
+}
+
+/// Format transformer diagnosis
+pub fn format_transformer_diagnosis(failures: &[TransformerFailureDiagnosis]) -> String {
+    let mut out = String::new();
+    out.push_str("═══ TRANSFORMER DIAGNOSIS ═══\n");
+    out.push_str(&format!("Failures: {}\n\n", failures.len()));
+
+    for (i, f) in failures.iter().enumerate() {
+        out.push_str(&format!("── Failure {} ──\n", i + 1));
+        out.push_str(&format!("  tokens: {:?}\n", f.tokens));
+        out.push_str(&format!("  expected: {}  raw: {}  quantized: {}\n",
+            f.expected, f.raw_prediction, f.quantized_prediction));
+        out.push_str(&format!("  output divergence: {:.6}\n", f.output_divergence));
+
+        for ld in &f.layer_divergences {
+            if ld.max_attn_diff > 0.001 || ld.max_hidden_diff > 0.001 {
+                out.push_str(&format!("  Layer {}: attn_diff={:.6} hidden_diff={:.6}",
+                    ld.layer_idx, ld.max_attn_diff, ld.max_hidden_diff));
+                if !ld.divergent_heads.is_empty() {
+                    out.push_str(&format!(" heads={:?}", ld.divergent_heads));
+                }
+                out.push('\n');
+            }
+        }
+        out.push('\n');
     }
 
     out

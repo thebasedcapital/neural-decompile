@@ -1,4 +1,4 @@
-use crate::quantize::QuantizedRnn;
+use crate::quantize::{QuantizedRnn, QuantizedTransformer};
 
 /// Comparison between two decompiled networks
 #[derive(Debug)]
@@ -150,6 +150,130 @@ pub fn format_compare(result: &CompareResult) -> String {
             out.push_str("\n  → Output weights are NEGATED — these circuits compute complement languages.\n");
             out.push_str("    Same DFA, inverted accept/reject. L(A) = Σ* \\ L(B)\n");
         }
+    }
+
+    out
+}
+
+// ============================================================================
+// Transformer comparison
+// ============================================================================
+
+/// Comparison between two transformers
+#[derive(Debug)]
+pub struct TransformerCompareResult {
+    pub layers_match: bool,
+    pub d_model_match: bool,
+    pub vocab_match: bool,
+    /// Per-layer cosine similarities [layer][matrix]
+    pub layer_sims: Vec<TransformerLayerSims>,
+    pub overall_similarity: f64,
+    pub relationship: TransformerRelationship,
+}
+
+#[derive(Debug)]
+pub struct TransformerLayerSims {
+    pub w_q: f64, pub w_k: f64, pub w_v: f64, pub w_o: f64,
+    pub w_ff_in: f64, pub w_ff_out: f64,
+    pub ln1: f64, pub ln2: f64,
+}
+
+#[derive(Debug)]
+pub enum TransformerRelationship {
+    Identical,
+    Similar,
+    DifferentArchitecture,
+    Different,
+}
+
+impl std::fmt::Display for TransformerRelationship {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Identical => write!(f, "IDENTICAL — same architecture, same weights"),
+            Self::Similar => write!(f, "SIMILAR — compatible architecture, related weights"),
+            Self::DifferentArchitecture => write!(f, "DIFFERENT ARCH — layers/d_model/vocab mismatch"),
+            Self::Different => write!(f, "DIFFERENT — distinct transformers"),
+        }
+    }
+}
+
+fn vec_sim(a: &[f64], b: &[f64]) -> f64 {
+    if a.len() != b.len() || a.is_empty() { return 0.0; }
+    let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
+    let norm_b: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
+    if norm_a < 1e-10 || norm_b < 1e-10 { return 0.0; }
+    dot / (norm_a * norm_b)
+}
+
+pub fn compare_transformers(a: &QuantizedTransformer, b: &QuantizedTransformer) -> TransformerCompareResult {
+    let layers_match = a.n_layers == b.n_layers;
+    let d_model_match = a.d_model == b.d_model;
+    let vocab_match = a.vocab_size == b.vocab_size;
+
+    let mut layer_sims = Vec::new();
+
+    if layers_match && d_model_match {
+        for (la, lb) in a.layers.iter().zip(b.layers.iter()) {
+            let ln1_sim = vec_sim(&la.ln1_gamma, &lb.ln1_gamma) * 0.5 + vec_sim(&la.ln1_beta, &lb.ln1_beta) * 0.5;
+            let ln2_sim = vec_sim(&la.ln2_gamma, &lb.ln2_gamma) * 0.5 + vec_sim(&la.ln2_beta, &lb.ln2_beta) * 0.5;
+
+            layer_sims.push(TransformerLayerSims {
+                w_q: vec_sim(&la.w_q, &lb.w_q),
+                w_k: vec_sim(&la.w_k, &lb.w_k),
+                w_v: vec_sim(&la.w_v, &lb.w_v),
+                w_o: vec_sim(&la.w_o, &lb.w_o),
+                w_ff_in: vec_sim(&la.w_ff_in, &lb.w_ff_in),
+                w_ff_out: vec_sim(&la.w_ff_out, &lb.w_ff_out),
+                ln1: ln1_sim,
+                ln2: ln2_sim,
+            });
+        }
+    }
+
+    // Overall similarity
+    let overall = if !layer_sims.is_empty() {
+        let total: f64 = layer_sims.iter().map(|ls| {
+            (ls.w_q + ls.w_k + ls.w_v + ls.w_o + ls.w_ff_in + ls.w_ff_out) / 6.0
+        }).sum();
+        total / layer_sims.len() as f64
+    } else { 0.0 };
+
+    let relationship = if !layers_match || !d_model_match || !vocab_match {
+        TransformerRelationship::DifferentArchitecture
+    } else if overall > 0.99 {
+        TransformerRelationship::Identical
+    } else if overall > 0.8 {
+        TransformerRelationship::Similar
+    } else {
+        TransformerRelationship::Different
+    };
+
+    TransformerCompareResult {
+        layers_match, d_model_match, vocab_match,
+        layer_sims, overall_similarity: overall, relationship,
+    }
+}
+
+pub fn format_transformer_compare(result: &TransformerCompareResult) -> String {
+    let mut out = String::new();
+    out.push_str("═══ TRANSFORMER COMPARISON ═══\n");
+    out.push_str(&format!("Relationship: {}\n\n", result.relationship));
+
+    out.push_str(&format!("Architecture: layers={} d_model={} vocab={}\n",
+        if result.layers_match { "✓" } else { "✗" },
+        if result.d_model_match { "✓" } else { "✗" },
+        if result.vocab_match { "✓" } else { "✗" }));
+
+    if !result.layer_sims.is_empty() {
+        out.push_str("\nPer-Layer Cosine Similarity:\n");
+        for (i, ls) in result.layer_sims.iter().enumerate() {
+            let attn = (ls.w_q + ls.w_k + ls.w_v + ls.w_o) / 4.0;
+            let ffn = (ls.w_ff_in + ls.w_ff_out) / 2.0;
+            out.push_str(&format!("  L{}: attn={:.3} ffn={:.3} ln={:.3}\n",
+                i, attn, ffn, (ls.ln1 + ls.ln2) / 2.0));
+        }
+        out.push_str(&format!("\nOverall similarity: {:.3}\n", result.overall_similarity));
     }
 
     out
