@@ -75,6 +75,20 @@ k[49] = -2.453*d411 + 0.617*d1454 + 0.617*d1447 + 0.543*d802 + ...  (12 terms, 6
 
 Full analysis in `DECOMPILED-HEAD.md`.
 
+**4. Head 15 of layer 0 K is a rank-2 binary gate.**
+Entropy 1.824 bits (most structured head). SVD reveals it compresses 2048 embedding dims to just 2 features: (a) syntax/operators vs natural language prose (72% variance), (b) morphologically complex vs analytic languages (23%). Orthogonal to head 21 but reads the same embedding features. Full analysis in `DECOMPILED-HEAD-2.md`.
+
+**5. Full taxonomy of all 32 layer-0 K heads.**
+- 11/32 (34%) are rank 1-2 gates (binary routing: newlines, syntax, special tokens)
+- 14/32 (44%) are rank 3-4 classifiers (punctuation type, language groups, whitespace)
+- 7/32 (22%) are rank 5+ complex (multi-script classification, domain detection)
+- Heads 6 & 7 are duplicate rank-1 newline detectors (cosine 0.992) with different output wiring — multi-path routing of the same feature
+- Heads 2 & 3 are complementary: H2 detects EOS/BOM, H3 detects CJK (opposite signs)
+- Interactive visualization: `results/tinyllama-L0-K-taxonomy.html`
+
+**6. Cross-model comparison with Llama-2 7B.**
+Layer 0 Q/K outlier confirmed universal. V is not special. Per-head analysis shows Llama-2 Q head 26 is the most structured (2.381 bits). See `results/cross-model-entropy.md`.
+
 ## Future Plan
 
 Three phases. Each phase has a **decision gate** — check the gate before moving on.
