@@ -35,9 +35,9 @@ enum Commands {
         #[arg()]
         input: PathBuf,
 
-        /// Quantization epsilon (weights within eps of integer get snapped)
-        #[arg(short, long, default_value = "0.15")]
-        eps: f64,
+        /// Quantization epsilon (weights within eps of integer get snapped). Default: 0.15 for RNNs, 0.01 for transformers
+        #[arg(short, long)]
+        eps: Option<f64>,
 
         /// Output format: python, rust, rust-kani, table, circuit
         #[arg(short, long, default_value = "python")]
@@ -266,6 +266,14 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Decompile { input, eps, format, output } => {
             let program = weights::load_neural_program(&input)?;
+
+            // Auto-select epsilon based on model type if not specified
+            let eps = eps.unwrap_or_else(|| {
+                match &program {
+                    weights::NeuralProgram::Rnn(_) => 0.15,
+                    weights::NeuralProgram::Transformer(_) => 0.01,
+                }
+            });
 
             let code = match &program {
                 weights::NeuralProgram::Rnn(rnn) => {

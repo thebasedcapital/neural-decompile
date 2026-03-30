@@ -63,8 +63,8 @@ mod proofs {
             i += 1;
         }
 
-        let c11 = contains_11(&seq, MAX_LEN);
-        let nc1 = no_consecutive_1(&seq, MAX_LEN);
+        let c11 = contains_11(&seq, n_bits);
+        let nc1 = no_consecutive_1(&seq, n_bits);
 
         // They must always sum to exactly 1
         assert_eq!(c11 + nc1, 1, "Not complements!");

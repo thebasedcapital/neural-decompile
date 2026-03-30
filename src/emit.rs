@@ -562,12 +562,14 @@ fn vec2d_python(v: &[Vec<f64>]) -> String {
 fn fmt_float_precise(v: f64) -> String {
     if v == 0.0 {
         "0.0".to_string()
+    } else if v.abs() < 0.0001 {
+        format!("{:.10}", v)
     } else if v.abs() < 0.001 {
         format!("{:.8}", v)
     } else if v.abs() < 0.01 {
         format!("{:.6}", v)
     } else {
-        format!("{:.4}", v)
+        format!("{:.6}", v)
     }
 }
 
