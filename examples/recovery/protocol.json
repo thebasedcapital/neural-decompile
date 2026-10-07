@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "dataset": "FALCON H1 / DANDI 000954",
+  "task": "Causal prediction of seven cued movement velocities from human intracortical recordings",
+  "development_splits": ["held-in-calib", "held-in-minival"],
+  "adaptation_split": "First chronological held-out-calib recording block on each later day",
+  "evaluation_split": "Second chronological held-out-calib recording block on each later day, reserved before reading targets",
+  "bin_ms": 20,
+  "filter": {"type": "causal finite exponential", "tau_ms": 240, "extent_tau": 1},
+  "calibration_budgets_seconds": [0, 5, 15, 30, 45],
+  "primary_budget_seconds": 30,
+  "base_ridge_alphas": [0.01, 0.1, 1.0, 10.0],
+  "adaptation_alphas": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+  "reused_data_alpha_overrides": {"three_source_separate_bias_rank_6_repair": {"30": 30.0}},
+  "candidate_methods": ["gain_repair", "drift_basis", "three_source_separate_bias_rank_6_repair"],
+  "baseline_methods": ["frozen", "recenter", "scratch", "anchored", "output_affine"],
+  "selection": "Forward-day validation on held-in days: train on all preceding days, beginning with three training days. Choose base regularization by frozen validation performance, then per-method regularization independently for each calibration budget. Choose the primary candidate by held-in validation mean R2 at 30 seconds. Save selection before opening any held-out-calib targets. Amendment after reused-data reevaluation: the source-only alpha of the primary candidate failed to transfer to later days, so its 30-second adaptation alpha was reselected from previously observed later-day results (reused_data_alpha_overrides). That override is leaderboard-informed, recorded in the selection file, and every later-day result is labeled reused-data evidence rather than a fresh holdout.",
+  "calibration": "Take the chronological prefix of the first held-out-calib recording block for each day. The entire second block is reserved for evaluation. Budgets include every observed bin, including rest/cue periods; fit supervised methods only on official eval_mask bins with finite targets. Never select target days, windows, or channels using evaluation labels.",
+  "scoring": "Variance-weighted R2 across seven outputs using official eval_mask. Concatenate recording blocks within each day, then macro-average day scores. Report every day, every method, every budget, negative scores, and per-output scores.",
+  "filter_boundaries": "Reset causal filter at each NWB recording boundary. No future neural samples, evaluation-derived normalization, target-derived features, or smoothing across files.",
+  "scope": "Offline local chronological-block holdout on one deidentified human participant; not official minival or hidden-test evaluation, live closed-loop control, clinical validation, or a novelty claim. The public release has no held-out-minival files. Dataset dates are obfuscated.",
+  "stop_condition": "If source-selected targeted repair does not beat matched recalibration baselines on the untouched later-day evaluation, report that failure. Original ruling: no tuning on those evaluation labels. Amended ruling (2026-10-06): exactly one disclosed leaderboard-informed reselection was performed on the previously observed later-day results (reused_data_alpha_overrides); no other later-day tuning is permitted, and all later-day results remain labeled reused-data evidence. No claim that decompilation contributes unless an explicit ablation demonstrates it."
+}

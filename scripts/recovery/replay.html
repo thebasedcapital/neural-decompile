@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Human 7DoF decoder recovery replay</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080b10;
+      --surface: #0e131b;
+      --surface-2: #141b25;
+      --surface-3: #1a2330;
+      --line: #263241;
+      --line-strong: #3b4a5e;
+      --text: #edf2f8;
+      --muted: #93a1b3;
+      --faint: #657386;
+      --target: #e9eef5;
+      --frozen: #f1a64b;
+      --adapted: #4ed3b0;
+      --danger: #f17c86;
+      --focus: #7bb5ff;
+      --shadow: 0 20px 55px rgba(0, 0, 0, .28);
+      --radius: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --ease: cubic-bezier(.23, 1, .32, 1);
+    }
+
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #eef2f5;
+      --surface: #ffffff;
+      --surface-2: #f7f9fb;
+      --surface-3: #eef3f7;
+      --line: #d9e0e7;
+      --line-strong: #bac5d1;
+      --text: #15202d;
+      --muted: #586779;
+      --faint: #7f8c9c;
+      --target: #1f2b38;
+      --frozen: #b9650d;
+      --adapted: #087d69;
+      --danger: #b83e4b;
+      --focus: #176fc0;
+      --shadow: 0 18px 42px rgba(28, 43, 58, .1);
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--bg); }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(circle at 12% -10%, color-mix(in srgb, var(--adapted) 9%, transparent), transparent 30rem),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, select, input { font: inherit; }
+    button, select { color: var(--text); }
+    button { touch-action: manipulation; }
+    a { color: var(--adapted); text-underline-offset: 3px; }
+    a:hover { text-decoration-thickness: 2px; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+    ::selection { background: color-mix(in srgb, var(--adapted) 32%, transparent); }
+
+    .shell { width: min(1560px, 100%); margin: 0 auto; padding: 32px clamp(16px, 3vw, 44px) 64px; }
+    .masthead { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+    .eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .badge {
+      display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px;
+      border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2);
+      color: var(--muted); font: 600 11px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase;
+    }
+    .badge::before { width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--adapted); content: ""; }
+    .badge.neutral::before { background: var(--faint); }
+    h1 { max-width: 850px; margin: 0; font-size: clamp(28px, 4vw, 48px); line-height: 1.04; letter-spacing: -.045em; }
+    .subtitle { max-width: 850px; margin: 14px 0 0; color: var(--muted); font-size: clamp(14px, 1.5vw, 17px); }
+    .icon-button {
+      flex: 0 0 auto; display: inline-grid; width: 40px; height: 40px; place-items: center;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer;
+      transition: border-color 160ms var(--ease), transform 120ms var(--ease), background-color 160ms var(--ease);
+    }
+    .icon-button:active, .play-button:active { transform: scale(.97); }
+    @media (hover: hover) and (pointer: fine) { .icon-button:hover { border-color: var(--line-strong); background: var(--surface-2); } }
+    .icon-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+    .card { border: 1px solid var(--line); border-radius: var(--radius); background: color-mix(in srgb, var(--surface) 96%, transparent); box-shadow: var(--shadow); }
+    .controls { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(170px, 1.2fr) minmax(155px, 1fr) auto; gap: 12px; padding: 16px; }
+    .field label { display: block; margin: 0 0 6px 2px; color: var(--muted); font: 600 11px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+    .select-wrap { position: relative; }
+    select {
+      width: 100%; min-height: 42px; padding: 0 36px 0 12px; appearance: none;
+      border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); cursor: pointer;
+    }
+    .select-wrap::after { position: absolute; top: 50%; right: 13px; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); content: ""; pointer-events: none; transform: translateY(-70%) rotate(45deg); }
+    .selection-note { align-self: end; min-width: 185px; padding: 9px 12px; border-left: 2px solid var(--adapted); color: var(--muted); font-size: 12px; }
+    .selection-note strong { display: block; color: var(--text); font-family: var(--mono); font-size: 13px; }
+
+    .metric-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 12px 0; }
+    .metric { min-width: 0; padding: 15px 16px; }
+    .metric-label { display: block; overflow: hidden; color: var(--muted); font: 600 10px/1.2 var(--mono); letter-spacing: .055em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+    .metric-value { display: block; margin-top: 7px; overflow: hidden; font: 650 clamp(19px, 2vw, 28px)/1 var(--mono); letter-spacing: -.04em; text-overflow: ellipsis; white-space: nowrap; }
+    .metric-detail { display: block; margin-top: 6px; overflow: hidden; color: var(--faint); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .metric-value.adapted { color: var(--adapted); }
+    .metric-value.frozen { color: var(--frozen); }
+    .metric-value.negative { color: var(--danger); }
+
+    .replay { overflow: hidden; }
+    .replay-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 20px 22px 16px; border-bottom: 1px solid var(--line); }
+    .section-kicker { margin: 0 0 4px; color: var(--adapted); font: 600 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    h2 { margin: 0; font-size: 19px; letter-spacing: -.02em; }
+    .section-copy { max-width: 700px; margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 15px; margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+    .swatch { width: 18px; height: 2px; border-radius: 9px; background: currentColor; }
+    .swatch.target { color: var(--target); }
+    .swatch.frozen { color: var(--frozen); }
+    .swatch.adapted { color: var(--adapted); }
+    .swatch.masked { width: 8px; height: 8px; border: 1px dashed var(--faint); background: transparent; }
+
+    .transport { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+    .play-button {
+      display: inline-flex; min-width: 92px; min-height: 38px; align-items: center; justify-content: center; gap: 8px;
+      border: 1px solid color-mix(in srgb, var(--adapted) 55%, var(--line)); border-radius: 9px;
+      background: color-mix(in srgb, var(--adapted) 12%, var(--surface)); cursor: pointer; font-weight: 650;
+      transition: transform 120ms var(--ease), background-color 160ms var(--ease);
+    }
+    .play-button svg { width: 14px; height: 14px; fill: currentColor; }
+    .timeline-wrap { min-width: 0; }
+    input[type="range"] { width: 100%; margin: 0; accent-color: var(--adapted); cursor: pointer; }
+    .timeline-meta { display: flex; justify-content: space-between; margin-top: 2px; color: var(--faint); font: 10px/1 var(--mono); }
+    .timecode { min-width: 76px; text-align: right; font: 600 12px/1.2 var(--mono); }
+    .timecode span { color: var(--faint); }
+
+    .plot-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+    .plot { min-width: 0; padding: 12px 14px 9px; background: var(--surface); }
+    .plot:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    .plot-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 22px; }
+    .plot-title { overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .plot-values { display: flex; gap: 10px; font: 10px/1 var(--mono); white-space: nowrap; }
+    .plot-values .truth { color: var(--target); }
+    .plot-values .frozen { color: var(--frozen); }
+    .plot-values .adapted { color: var(--adapted); }
+    canvas.trace { display: block; width: 100%; height: 150px; }
+
+    .lower-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 12px; margin-top: 12px; }
+    .panel-head { padding: 19px 20px 14px; border-bottom: 1px solid var(--line); }
+    .aggregate-chart { width: 100%; height: 270px; display: block; }
+    .dimension-list { display: grid; gap: 1px; margin: 0; background: var(--line); }
+    .dimension-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 16px; padding: 12px 16px; background: var(--surface); }
+    .dimension-row dt { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .dimension-row dd { margin: 0; font: 600 12px/1 var(--mono); }
+    .dimension-row .base { color: var(--frozen); }
+    .dimension-row .repair { color: var(--adapted); }
+
+    .table-card { margin-top: 12px; overflow: hidden; }
+    .table-scroll { overflow: auto; max-height: min(640px, 70vh); }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+    th, td { padding: 10px 13px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th { position: sticky; z-index: 2; top: 0; background: var(--surface-2); color: var(--muted); font: 600 10px/1.2 var(--mono); letter-spacing: .05em; text-transform: uppercase; }
+    th:first-child, td:first-child { position: sticky; left: 0; z-index: 1; text-align: left; background: var(--surface); }
+    th:first-child { z-index: 3; background: var(--surface-2); }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr.current td { background: color-mix(in srgb, var(--adapted) 7%, var(--surface)); }
+    tbody tr.current td:first-child { box-shadow: inset 2px 0 var(--adapted); }
+    td.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    td.negative { color: var(--danger); }
+    .method-cell strong { display: block; color: var(--text); }
+    .method-cell span { color: var(--faint); font-size: 10px; }
+
+    .notes { display: grid; grid-template-columns: 1.1fr .9fr; gap: 12px; margin-top: 12px; }
+    .notes-panel { padding: 20px; }
+    .definition-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px 16px; margin: 15px 0 0; }
+    .definition-list dt { color: var(--faint); font: 600 10px/1.5 var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+    .definition-list dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+    .limitations { margin: 13px 0 0; padding-left: 19px; color: var(--muted); }
+    .limitations li + li { margin-top: 7px; }
+    .disclaimer { margin: 16px 0 0; padding: 12px 14px; border-left: 2px solid var(--frozen); background: var(--surface-2); color: var(--muted); font-size: 12px; }
+    .footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; padding: 20px 2px 0; color: var(--faint); font: 10px/1.5 var(--mono); }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    .noscript { margin: 20px; padding: 16px; border: 1px solid var(--danger); color: var(--danger); }
+
+    @media (max-width: 960px) {
+      .controls { grid-template-columns: repeat(3, 1fr); }
+      .selection-note { grid-column: 1 / -1; }
+      .metric-grid { grid-template-columns: repeat(3, 1fr); }
+      .lower-grid, .notes { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 700px) {
+      .shell { padding-top: 20px; }
+      .masthead { margin-bottom: 18px; }
+      .controls { grid-template-columns: 1fr; }
+      .metric-grid { grid-template-columns: repeat(2, 1fr); }
+      .replay-header { display: block; }
+      .legend { justify-content: flex-start; margin-top: 14px; }
+      .transport { grid-template-columns: auto minmax(0, 1fr); }
+      .timecode { grid-column: 1 / -1; text-align: center; }
+      .plot-grid { grid-template-columns: 1fr; }
+      .plot:last-child:nth-child(odd) { grid-column: auto; }
+      canvas.trace { height: 135px; }
+    }
+    @media (max-width: 450px) {
+      .metric-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .metric { padding: 13px; }
+      .controls, .replay-header, .transport { padding-left: 14px; padding-right: 14px; }
+      .plot-values { gap: 6px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0ms !important; } }
+    @media print {
+      :root { color-scheme: light; }
+      body { background: #fff; }
+      .shell { width: 100%; padding: 16px; }
+      .icon-button, .transport { display: none; }
+      .card { box-shadow: none; break-inside: avoid; }
+      .table-scroll { max-height: none; overflow: visible; }
+      th { position: static; }
+      th:first-child, td:first-child { position: static; }
+    }
+    .primary-outcome { margin-bottom: 16px; padding: 18px 20px; border-left: 3px solid var(--danger); }
+    .primary-outcome[data-improved="true"] { border-left-color: var(--adapted); }
+  </style>
+</head>
+<body>
+  <noscript><div class="noscript">This self-contained measured replay requires JavaScript to draw its embedded results. No network access is used.</div></noscript>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <div class="eyebrow">
+          <span class="badge">Measured offline replay</span>
+          <span class="badge neutral" id="schema-badge"></span>
+        </div>
+        <h1>Human 7DoF decoder recovery</h1>
+        <p class="subtitle" id="subtitle"></p>
+      </div>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="Use light theme" title="Toggle color theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.64 5.64l1.42 1.42m9.88 9.88 1.42 1.42m0-12.72-1.42 1.42M7.06 16.94l-1.42 1.42"/><circle cx="12" cy="12" r="4"/></svg>
+      </button>
+    </header>
+
+    <section class="card primary-outcome" id="primary-outcome" aria-labelledby="primary-title">
+      <p class="section-kicker" id="primary-budget"></p>
+      <h2 id="primary-title"></h2>
+      <p class="section-copy" id="primary-detail"></p>
+      <p class="disclaimer" id="evidence-status"></p>
+    </section>
+
+    <section class="card controls" aria-label="Replay configuration">
+      <div class="field">
+        <label for="day-select">Recording day</label>
+        <div class="select-wrap"><select id="day-select"></select></div>
+      </div>
+      <div class="field">
+        <label for="method-select">Comparison method</label>
+        <div class="select-wrap"><select id="method-select"></select></div>
+      </div>
+      <div class="field">
+        <label for="budget-select">Calibration budget</label>
+        <div class="select-wrap"><select id="budget-select"></select></div>
+      </div>
+      <div class="selection-note" id="selection-note"></div>
+    </section>
+
+    <section class="metric-grid" aria-label="Selected result metrics">
+      <div class="card metric"><span class="metric-label">Selected method R²</span><strong class="metric-value adapted" id="adapted-r2">—</strong><span class="metric-detail" id="adapted-detail"></span></div>
+      <div class="card metric"><span class="metric-label">Frozen R²</span><strong class="metric-value frozen" id="frozen-r2">—</strong><span class="metric-detail">Earlier-day decoder · no adaptation</span></div>
+      <div class="card metric"><span class="metric-label">ΔR² vs frozen</span><strong class="metric-value" id="delta-r2">—</strong><span class="metric-detail">Selected method minus frozen</span></div>
+      <div class="card metric"><span class="metric-label">Neural channels</span><strong class="metric-value" id="channel-count">—</strong><span class="metric-detail" id="calibration-available"></span></div>
+      <div class="card metric"><span class="metric-label">Replay coverage</span><strong class="metric-value" id="coverage">—</strong><span class="metric-detail">Scored display samples</span></div>
+    </section>
+
+    <section class="card replay" aria-labelledby="replay-title">
+      <div class="replay-header">
+        <div>
+          <p class="section-kicker">Reused later-day recording replay</p>
+          <h2 id="replay-title">Target, frozen, and selected-method velocities</h2>
+          <p class="section-copy">Precomputed outputs on the previously inspected second chronological block, downsampled for display. R² uses all eligible 50 Hz bins, not these plotted samples.</p>
+        </div>
+        <div class="legend" aria-label="Plot legend">
+          <span class="legend-item"><i class="swatch target"></i>Target</span>
+          <span class="legend-item"><i class="swatch frozen"></i>Frozen</span>
+          <span class="legend-item"><i class="swatch adapted"></i><span id="adapted-legend">Selected method</span></span>
+          <span class="legend-item"><i class="swatch masked"></i>Outside score mask</span>
+        </div>
+      </div>
+      <div class="transport">
+        <button class="play-button" id="play-button" type="button" aria-label="Play replay">
+          <svg id="play-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.4v11.2L13 8 3 2.4Z"/></svg>
+          <span id="play-label">Play</span>
+        </button>
+        <div class="timeline-wrap">
+          <label class="sr-only" for="timeline">Replay position</label>
+          <input id="timeline" type="range" min="0" max="1" step="1" value="0">
+          <div class="timeline-meta"><span>Start</span><span id="window-label">Visible window</span><span>End</span></div>
+        </div>
+        <div class="timecode"><span id="current-time">00:00.0</span> <span>/</span> <span id="total-time">00:00.0</span></div>
+      </div>
+      <div class="plot-grid" id="plot-grid"></div>
+    </section>
+
+    <div class="lower-grid">
+      <section class="card" aria-labelledby="aggregate-title">
+        <div class="panel-head"><p class="section-kicker">All-day aggregate</p><h2 id="aggregate-title">Day-level R² comparison</h2><p class="section-copy">Every day is shown. Negative R² remains below the zero line.</p></div>
+        <canvas class="aggregate-chart" id="aggregate-chart" role="img" aria-label="All-day R-squared comparison chart"></canvas>
+      </section>
+      <section class="card" aria-labelledby="dimension-title">
+        <div class="panel-head"><p class="section-kicker">Selected day</p><h2 id="dimension-title">Per-dimension R²</h2><p class="section-copy">Frozen versus the selected comparison method.</p></div>
+        <dl class="dimension-list" id="dimension-list"></dl>
+      </section>
+    </div>
+
+    <section class="card table-card" aria-labelledby="comparison-title">
+      <div class="panel-head"><p class="section-kicker">No cherry-picking</p><h2 id="comparison-title">Complete method × budget comparison</h2><p class="section-copy">All measured summary rows and all recording-day scores from the embedded experiment JSON.</p></div>
+      <div class="table-scroll"><table id="comparison-table"><caption class="sr-only">Complete comparison of every method, calibration budget, and day</caption></table></div>
+    </section>
+
+    <section class="notes">
+      <div class="card notes-panel" aria-labelledby="protocol-title">
+        <p class="section-kicker">Evaluation contract</p><h2 id="protocol-title">Protocol and provenance</h2>
+        <dl class="definition-list" id="protocol-list"></dl>
+        <p class="disclaimer">This is an offline replay of public, deidentified human neural recordings for imagined 7DoF motion. Evaluation uses a reserved local second recording block, not official minival or the private test. It is not live BCI control, physical robot feedback, a clinical safety result, or an official leaderboard score. R² is a regression metric, not accuracy; values may be negative.</p>
+      </div>
+      <div class="card notes-panel" aria-labelledby="limitations-title">
+        <p class="section-kicker">Interpretation boundaries</p><h2 id="limitations-title">Reported limitations</h2>
+        <ul class="limitations" id="limitations"></ul>
+      </div>
+    </section>
+
+    <footer class="footer"><span id="generated"></span><span id="hashes"></span></footer>
+    <div class="sr-only" id="live-region" aria-live="polite"></div>
+  </main>
+
+  <script id="recovery-data" type="application/json">__RECOVERY_JSON__</script>
+  <script>
+    "use strict";
+    (() => {
+      const data = JSON.parse(document.getElementById("recovery-data").textContent);
+      const $ = (id) => document.getElementById(id);
+      const state = {
+        day: data.sessions[0].day,
+        method: data.selected.method,
+        budget: Number(data.selected.budget_seconds),
+        frame: 0,
+        playing: false,
+        timer: 0,
+      };
+      const methods = new Map(data.methods.map((method) => [method.id, method]));
+      const comparisonMethods = data.methods;
+      const budgets = data.protocol.calibration_budgets_seconds.map(Number);
+      const css = () => getComputedStyle(document.documentElement);
+      const color = (name) => css().getPropertyValue(name).trim();
+      const currentSession = () => data.sessions.find((session) => session.day === state.day);
+      const budgetEntry = (object, budget) => Object.entries(object).find(([key]) => Number(key) === Number(budget))?.[1];
+      const comboScore = (session, method, budget) => session.scores.find((score) => score.method === method && Number(score.budget_seconds) === Number(budget));
+      const summaryRow = (method, budget) => data.summary.find((row) => row.method === method && Number(row.budget_seconds) === Number(budget));
+      const formatR2 = (value) => `${value < 0 ? "−" : ""}${Math.abs(value).toFixed(3)}`;
+      const formatNumber = (value, digits = 0) => new Intl.NumberFormat(undefined, { maximumFractionDigits: digits }).format(value);
+      const formatBudget = (value) => `${formatNumber(value, Number.isInteger(value) ? 0 : 2)} s`;
+      const formatTime = (seconds) => {
+        const safe = Math.max(0, seconds);
+        const minutes = Math.floor(safe / 60);
+        const remainder = safe - minutes * 60;
+        return `${String(minutes).padStart(2, "0")}:${remainder.toFixed(1).padStart(4, "0")}`;
+      };
+      const shortDay = (day) => `D·${day}`;
+      const text = (element, value) => { element.textContent = String(value); };
+      const announce = (message) => { text($("live-region"), message); };
+      const r2Class = (element, value, base) => { element.className = `metric-value ${base || ""} ${value < 0 ? "negative" : ""}`.trim(); };
+
+      function prediction(session, method, budget) {
+        return budgetEntry(session.replay.predictions[method], method === "frozen" ? 0 : budget);
+      }
+
+      function populateControls() {
+        data.sessions.forEach((session) => $("day-select").add(new Option(`Obfuscated day ${session.day}`, session.day)));
+        comparisonMethods.forEach((method) => $("method-select").add(new Option(method.label, method.id)));
+        budgets.forEach((budget) => $("budget-select").add(new Option(formatBudget(budget), String(budget))));
+        $("day-select").value = state.day;
+        $("method-select").value = state.method;
+        $("budget-select").value = String(state.budget);
+      }
+
+      function buildPlots() {
+        const grid = $("plot-grid");
+        data.dataset.output_labels.forEach((label, index) => {
+          const article = document.createElement("article");
+          article.className = "plot";
+          article.innerHTML = `<div class="plot-head"><span class="plot-title"></span><span class="plot-values"><span class="truth"></span><span class="frozen"></span><span class="adapted"></span></span></div><canvas class="trace" role="img"></canvas>`;
+          text(article.querySelector(".plot-title"), label);
+          const canvas = article.querySelector("canvas");
+          canvas.dataset.dimension = String(index);
+          canvas.setAttribute("aria-label", `${label}: target, frozen, and adapted velocity over time`);
+          grid.append(article);
+        });
+      }
+
+      function updateMetrics() {
+        const session = currentSession();
+        const selected = comboScore(session, state.method, state.budget);
+        const frozen = comboScore(session, "frozen", state.budget);
+        const delta = selected.r2 - frozen.r2;
+        text($("adapted-r2"), formatR2(selected.r2));
+        text($("frozen-r2"), formatR2(frozen.r2));
+        text($("delta-r2"), `${delta >= 0 ? "+" : "−"}${Math.abs(delta).toFixed(3)}`);
+        r2Class($("adapted-r2"), selected.r2, state.method === "frozen" ? "frozen" : "adapted");
+        r2Class($("frozen-r2"), frozen.r2, "frozen");
+        r2Class($("delta-r2"), delta, delta < 0 ? "negative" : delta > 0 ? "adapted" : "");
+        text($("adapted-detail"), `${methods.get(state.method).label} · ${formatBudget(state.budget)}`);
+        text($("channel-count"), formatNumber(session.n_channels));
+        text($("calibration-available"), `${formatBudget(session.calibration_seconds)} calibration available`);
+        const eligible = session.replay.mask.filter(Boolean).length;
+        text($("coverage"), `${((eligible / session.replay.mask.length) * 100).toFixed(1)}%`);
+        const note = $("selection-note");
+        note.replaceChildren();
+        const strong = document.createElement("strong");
+        text(strong, `${shortDay(state.day)} · ${formatBudget(state.budget)}`);
+        note.append(strong, document.createTextNode(`${methods.get(state.method).description} Preselected comparison baseline: ${methods.get(data.selected.baseline).label}.`));
+        text($("adapted-legend"), methods.get(state.method).label);
+      }
+
+      function updateDimensions() {
+        const session = currentSession();
+        const frozen = comboScore(session, "frozen", state.budget).per_dimension_r2;
+        const adapted = comboScore(session, state.method, state.budget).per_dimension_r2;
+        const list = $("dimension-list");
+        list.replaceChildren();
+        data.dataset.output_labels.forEach((label, index) => {
+          const row = document.createElement("div");
+          row.className = "dimension-row";
+          const dt = document.createElement("dt");
+          const base = document.createElement("dd");
+          const repair = document.createElement("dd");
+          base.className = `base${frozen[index] < 0 ? " negative" : ""}`;
+          repair.className = `repair${adapted[index] < 0 ? " negative" : ""}`;
+          text(dt, label);
+          text(base, formatR2(frozen[index]));
+          text(repair, formatR2(adapted[index]));
+          base.title = "Frozen R²";
+          repair.title = "Adapted R²";
+          row.append(dt, base, repair);
+          list.append(row);
+        });
+      }
+
+      function setupCanvas(canvas, height) {
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.max(1, canvas.clientWidth);
+        const cssHeight = height || canvas.clientHeight;
+        const pixelWidth = Math.round(width * ratio);
+        const pixelHeight = Math.round(cssHeight * ratio);
+        if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+          canvas.width = pixelWidth;
+          canvas.height = pixelHeight;
+        }
+        const context = canvas.getContext("2d");
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        return { context, width, height: cssHeight };
+      }
+
+      function tracePath(context, values, dimension, start, end, x, y, stroke, width, breaks) {
+        context.beginPath();
+        context.strokeStyle = stroke;
+        context.lineWidth = width;
+        context.lineJoin = "round";
+        context.lineCap = "round";
+        let open = false;
+        for (let index = start; index <= end; index += 1) {
+          const value = values[index][dimension];
+          if (!Number.isFinite(value)) { open = false; continue; }
+          const px = x(index);
+          const py = y(value);
+          if (!open || breaks[index]) context.moveTo(px, py);
+          else context.lineTo(px, py);
+          open = true;
+        }
+        context.stroke();
+      }
+
+      function drawTrace(canvas) {
+        const session = currentSession();
+        const replay = session.replay;
+        const dimension = Number(canvas.dataset.dimension);
+        const frozen = prediction(session, "frozen", state.budget);
+        const adapted = prediction(session, state.method, state.budget);
+        const { context, width, height } = setupCanvas(canvas, canvas.clientHeight);
+        context.clearRect(0, 0, width, height);
+        const pad = { left: 45, right: 10, top: 8, bottom: 22 };
+        const plotWidth = width - pad.left - pad.right;
+        const plotHeight = height - pad.top - pad.bottom;
+        const dt = Number(replay.dt_seconds);
+        const visibleSamples = Math.max(25, Math.round(15 / dt));
+        let start = Math.max(0, state.frame - Math.floor(visibleSamples * .72));
+        let end = Math.min(replay.seconds.length - 1, start + visibleSamples);
+        start = Math.max(0, end - visibleSamples);
+        const all = [];
+        for (let index = start; index <= end; index += 1) {
+          const values = [replay.truth[index][dimension], frozen[index][dimension], adapted[index][dimension]];
+          values.forEach((value) => { if (Number.isFinite(value)) all.push(value); });
+        }
+        let minimum = Math.min(...all);
+        let maximum = Math.max(...all);
+        const span = maximum - minimum || 1;
+        minimum -= span * .12;
+        maximum += span * .12;
+        const x = (index) => pad.left + ((index - start) / Math.max(1, end - start)) * plotWidth;
+        const y = (value) => pad.top + ((maximum - value) / (maximum - minimum)) * plotHeight;
+
+        context.strokeStyle = color("--line");
+        context.lineWidth = 1;
+        context.font = `9px ${color("--mono") || "monospace"}`;
+        context.fillStyle = color("--faint");
+        context.textAlign = "right";
+        context.textBaseline = "middle";
+        for (let tick = 0; tick <= 4; tick += 1) {
+          const value = maximum - ((maximum - minimum) * tick) / 4;
+          const py = pad.top + (plotHeight * tick) / 4;
+          context.beginPath(); context.moveTo(pad.left, py); context.lineTo(width - pad.right, py); context.stroke();
+          context.fillText(value.toPrecision(2), pad.left - 6, py);
+        }
+        for (let index = start; index <= end;) {
+          if (!replay.mask[index]) {
+            let stop = index;
+            while (stop <= end && !replay.mask[stop]) stop += 1;
+            context.fillStyle = color("--surface-3");
+            context.fillRect(x(index), pad.top, Math.max(1, x(Math.min(stop, end)) - x(index)), plotHeight);
+            index = stop;
+          } else index += 1;
+        }
+        if (minimum < 0 && maximum > 0) {
+          context.strokeStyle = color("--line-strong");
+          context.beginPath(); context.moveTo(pad.left, y(0)); context.lineTo(width - pad.right, y(0)); context.stroke();
+        }
+        tracePath(context, replay.truth, dimension, start, end, x, y, color("--target"), 1.7, replay.breaks);
+        tracePath(context, frozen, dimension, start, end, x, y, color("--frozen"), 1.35, replay.breaks);
+        tracePath(context, adapted, dimension, start, end, x, y, color("--adapted"), 1.55, replay.breaks);
+        const markerX = x(state.frame);
+        context.strokeStyle = color("--focus"); context.lineWidth = 1;
+        context.beginPath(); context.moveTo(markerX, pad.top); context.lineTo(markerX, pad.top + plotHeight); context.stroke();
+        const markerValues = [replay.truth[state.frame][dimension], frozen[state.frame][dimension], adapted[state.frame][dimension]];
+        ["--target", "--frozen", "--adapted"].forEach((name, index) => {
+          if (!Number.isFinite(markerValues[index])) return;
+          context.fillStyle = color(name); context.beginPath(); context.arc(markerX, y(markerValues[index]), 2.5, 0, Math.PI * 2); context.fill();
+        });
+        context.fillStyle = color("--faint"); context.textAlign = "center"; context.textBaseline = "top";
+        context.fillText(`${(replay.seconds[start] - replay.seconds[0]).toFixed(1)} s`, pad.left, height - 15);
+        context.fillText(`${(replay.seconds[end] - replay.seconds[0]).toFixed(1)} s`, width - pad.right, height - 15);
+      }
+
+      function drawTraces() {
+        const session = currentSession();
+        const replay = session.replay;
+        const frozen = prediction(session, "frozen", state.budget);
+        const adapted = prediction(session, state.method, state.budget);
+        document.querySelectorAll("canvas.trace").forEach((canvas) => {
+          drawTrace(canvas);
+          const dimension = Number(canvas.dataset.dimension);
+          const parent = canvas.closest(".plot");
+          const targetValue = replay.truth[state.frame][dimension];
+          text(parent.querySelector(".truth"), `T ${Number.isFinite(targetValue) ? targetValue.toPrecision(3) : "gap"}`);
+          text(parent.querySelector(".frozen"), `F ${frozen[state.frame][dimension].toPrecision(3)}`);
+          text(parent.querySelector(".adapted"), `S ${adapted[state.frame][dimension].toPrecision(3)}`);
+        });
+      }
+
+      function drawAggregate() {
+        const canvas = $("aggregate-chart");
+        const { context, width, height } = setupCanvas(canvas, canvas.clientHeight);
+        context.clearRect(0, 0, width, height);
+        const frozen = summaryRow("frozen", state.budget);
+        const adapted = summaryRow(state.method, state.budget);
+        const days = data.sessions.map((session) => session.day);
+        const frozenByDay = new Map(frozen.day_scores.map((score) => [score.day, score.r2]));
+        const adaptedByDay = new Map(adapted.day_scores.map((score) => [score.day, score.r2]));
+        const values = days.flatMap((day) => [frozenByDay.get(day), adaptedByDay.get(day)]);
+        let minimum = Math.min(0, ...values);
+        let maximum = Math.max(0, ...values);
+        const span = maximum - minimum || 1;
+        minimum -= span * .12; maximum += span * .12;
+        const pad = { left: 48, right: 14, top: 22, bottom: 55 };
+        const plotWidth = width - pad.left - pad.right;
+        const plotHeight = height - pad.top - pad.bottom;
+        const y = (value) => pad.top + ((maximum - value) / (maximum - minimum)) * plotHeight;
+        context.font = "10px ui-monospace, monospace";
+        context.strokeStyle = color("--line"); context.fillStyle = color("--faint"); context.lineWidth = 1;
+        for (let tick = 0; tick <= 4; tick += 1) {
+          const value = maximum - ((maximum - minimum) * tick) / 4;
+          const py = y(value);
+          context.beginPath(); context.moveTo(pad.left, py); context.lineTo(width - pad.right, py); context.stroke();
+          context.textAlign = "right"; context.textBaseline = "middle"; context.fillText(value.toFixed(2), pad.left - 7, py);
+        }
+        const group = plotWidth / days.length;
+        const barWidth = Math.max(3, Math.min(22, group * .28));
+        days.forEach((day, index) => {
+          const center = pad.left + group * (index + .5);
+          const zero = y(0);
+          [[frozenByDay.get(day), color("--frozen"), center - barWidth - 1], [adaptedByDay.get(day), color("--adapted"), center + 1]].forEach(([value, fill, x]) => {
+            const py = y(value);
+            context.fillStyle = fill;
+            context.fillRect(x, Math.min(zero, py), barWidth, Math.max(1, Math.abs(zero - py)));
+          });
+          context.save(); context.translate(center, height - pad.bottom + 9); context.rotate(-Math.PI / 5);
+          context.fillStyle = day === state.day ? color("--text") : color("--faint");
+          context.textAlign = "right"; context.textBaseline = "middle"; context.fillText(shortDay(day), 0, 0); context.restore();
+        });
+        context.strokeStyle = color("--line-strong"); context.beginPath(); context.moveTo(pad.left, y(0)); context.lineTo(width - pad.right, y(0)); context.stroke();
+      }
+
+      function updateTimeline() {
+        const replay = currentSession().replay;
+        $("timeline").max = String(replay.seconds.length - 1);
+        $("timeline").value = String(state.frame);
+        const elapsed = replay.seconds[state.frame] - replay.seconds[0];
+        const total = replay.seconds[replay.seconds.length - 1] - replay.seconds[0];
+        text($("current-time"), formatTime(elapsed));
+        text($("total-time"), formatTime(total));
+        text($("window-label"), `15 s window · ${replay.mask[state.frame] ? "scored" : "outside score mask"}`);
+      }
+
+      function renderDynamic() {
+        updateTimeline();
+        drawTraces();
+      }
+
+      function stop() {
+        state.playing = false;
+        if (state.timer) window.clearTimeout(state.timer);
+        state.timer = 0;
+        text($("play-label"), "Play");
+        $("play-button").setAttribute("aria-label", "Play replay");
+        $("play-icon").innerHTML = '<path d="M3 2.4v11.2L13 8 3 2.4Z"/>';
+      }
+
+      function playbackStep() {
+        if (!state.playing) return;
+        const replay = currentSession().replay;
+        if (state.frame >= replay.seconds.length - 1) {
+          stop(); announce("Replay complete"); return;
+        }
+        state.frame += 1;
+        renderDynamic();
+        state.timer = window.setTimeout(playbackStep, Math.max(16, Number(replay.dt_seconds) * 1000));
+      }
+
+      function togglePlayback() {
+        if (state.playing) { stop(); announce("Replay paused"); return; }
+        const replay = currentSession().replay;
+        if (state.frame >= replay.seconds.length - 1) state.frame = 0;
+        state.playing = true;
+        text($("play-label"), "Pause");
+        $("play-button").setAttribute("aria-label", "Pause replay");
+        $("play-icon").innerHTML = '<path d="M3 2.5h3.5v11H3zm6.5 0H13v11H9.5z"/>';
+        announce("Replay playing");
+        playbackStep();
+      }
+
+      function buildTable() {
+        const table = $("comparison-table");
+        const days = data.sessions.map((session) => session.day);
+        const head = document.createElement("thead");
+        const row = document.createElement("tr");
+        ["Method", "Budget", "Mean R²", "Median R²", "Fit ms", "Adapted params", ...days.map(shortDay)].forEach((label) => {
+          const th = document.createElement("th"); th.scope = "col"; text(th, label); row.append(th);
+        });
+        head.append(row);
+        const body = document.createElement("tbody");
+        data.summary.forEach((summary) => {
+          const tr = document.createElement("tr");
+          tr.dataset.method = summary.method; tr.dataset.budget = String(summary.budget_seconds);
+          const method = methods.get(summary.method);
+          const methodCell = document.createElement("td"); methodCell.className = "method-cell";
+          const strong = document.createElement("strong"); const detail = document.createElement("span");
+          text(strong, method.label); text(detail, summary.method === "frozen" ? "fixed baseline" : method.description);
+          methodCell.append(strong, detail); tr.append(methodCell);
+          const scores = new Map(summary.day_scores.map((score) => [score.day, score.r2]));
+          const values = [
+            formatBudget(summary.budget_seconds),
+            formatR2(summary.mean_r2), formatR2(summary.median_r2), formatNumber(summary.fit_ms, 2),
+            formatNumber(summary.adapted_parameters), ...days.map((day) => formatR2(scores.get(day))),
+          ];
+          const numericR2Indices = new Set([1, 2, ...days.map((_, index) => index + 5)]);
+          values.forEach((value, index) => {
+            const td = document.createElement("td"); td.className = "mono"; text(td, value);
+            if (numericR2Indices.has(index) && String(value).startsWith("−")) td.classList.add("negative");
+            tr.append(td);
+          });
+          body.append(tr);
+        });
+        table.replaceChildren(head, body);
+      }
+
+      function highlightTable() {
+        document.querySelectorAll("#comparison-table tbody tr").forEach((row) => {
+          row.classList.toggle("current", row.dataset.method === state.method && Number(row.dataset.budget) === state.budget);
+        });
+      }
+
+      function fillStaticContent() {
+        text($("subtitle"), `${data.dataset.name} · ${data.dataset.task}. ${data.dataset.scope}`);
+        const source = document.createElement("a"); source.href = data.dataset.source_url; source.target = "_blank"; source.rel = "noreferrer"; text(source, data.dataset.name);
+        const list = $("protocol-list");
+        const primaryCandidate = summaryRow(data.selected.method, data.selected.budget_seconds);
+        const primaryBaseline = data.summary
+          .filter((row) => row.budget_seconds === data.selected.budget_seconds && row.method !== data.selected.method)
+          .reduce((best, row) => row.mean_r2 > best.mean_r2 ? row : best);
+        const primaryGap = primaryCandidate.mean_r2 - primaryBaseline.mean_r2;
+        const outcomeVerb = primaryGap > 0 ? "exceeds" : primaryGap < 0 ? "trails" : "matches";
+        text($("primary-budget"), `Reused-data reevaluation · ${formatBudget(data.selected.budget_seconds)} calibration · all ${data.sessions.length} later days`);
+        text($("primary-title"), primaryGap > 0 ? "Compact repair beats the best measured comparator" : "Compact repair does not beat the best measured comparator");
+        text($("primary-detail"), `${methods.get(primaryCandidate.method).label}: ${primaryCandidate.mean_r2.toFixed(4)} mean R². ${methods.get(primaryBaseline.method).label}: ${primaryBaseline.mean_r2.toFixed(4)}. Difference: ${primaryGap > 0 ? "+" : ""}${primaryGap.toFixed(4)}. Method selected on earlier-day folds; the 30-second alpha was reselected from reused later-day results (disclosed override).`);
+        text($("evidence-status"), data.evaluation_evidence);
+        $("primary-outcome").dataset.improved = String(primaryGap > 0);
+        const compiled = data.compiled_validation;
+        const entries = [
+          ["Dataset", source], ["Subject", data.dataset.subject], ["Neural bin", `${data.dataset.bin_ms} ms`],
+          ["Selection", data.protocol.selection], ["Evaluation", data.protocol.evaluation],
+          ["Preselected baseline", `${methods.get(data.selected.baseline).label} at ${formatBudget(data.selected.budget_seconds)}`],
+          ["Primary local outcome", `${methods.get(data.selected.method).label} ${outcomeVerb} best measured comparator ${methods.get(primaryBaseline.method).label} by ${Math.abs(primaryGap).toFixed(4)} mean R²`],
+          ["File split", "First chronological block calibrates; second chronological block is reused for local reevaluation"],
+          ["Compiled parity", `${formatNumber(compiled.bin_count)} bins / ${formatNumber(compiled.recording_count)} recordings; max |error| ${compiled.max_absolute_error.toExponential(2)}`],
+          ["Display replay", `${data.sessions[0].replay.dt_seconds} s steps; measured outputs only`],
+        ];
+        entries.forEach(([label, value]) => {
+          const dt = document.createElement("dt"); const dd = document.createElement("dd"); text(dt, label);
+          if (value instanceof Node) dd.append(value); else text(dd, value); list.append(dt, dd);
+        });
+        data.protocol.limitations.forEach((limitation) => { const li = document.createElement("li"); text(li, limitation); $("limitations").append(li); });
+        text($("generated"), `Generated ${data.provenance.generated_at} · schema ${data.schema_version}`);
+        text($("schema-badge"), `Schema v${data.schema_version}`);
+        const codeHashes = Object.values(data.provenance.code_sha256);
+        text($("hashes"), `manifest ${data.provenance.manifest_sha256.slice(0, 12)} · selection ${data.provenance.selection_sha256.slice(0, 12)} · code set ${codeHashes.length} files`);
+      }
+
+      function fullRender(announceChange = false) {
+        stop(); state.frame = 0;
+        updateMetrics(); updateDimensions(); highlightTable(); renderDynamic(); drawAggregate();
+        if (announceChange) announce(`${methods.get(state.method).label}, ${formatBudget(state.budget)}, day ${shortDay(state.day)}. R squared ${formatR2(comboScore(currentSession(), state.method, state.budget).r2)}.`);
+      }
+
+      $("day-select").addEventListener("change", (event) => { state.day = event.target.value; fullRender(true); });
+      $("method-select").addEventListener("change", (event) => { state.method = event.target.value; fullRender(true); });
+      $("budget-select").addEventListener("change", (event) => { state.budget = Number(event.target.value); fullRender(true); });
+      $("timeline").addEventListener("input", (event) => { stop(); state.frame = Number(event.target.value); renderDynamic(); });
+      $("play-button").addEventListener("click", togglePlayback);
+      $("theme-toggle").addEventListener("click", () => {
+        const light = document.documentElement.dataset.theme !== "light";
+        document.documentElement.dataset.theme = light ? "light" : "dark";
+        $("theme-toggle").setAttribute("aria-label", light ? "Use dark theme" : "Use light theme");
+        drawTraces(); drawAggregate();
+      });
+      document.addEventListener("keydown", (event) => {
+        const editable = ["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(document.activeElement?.tagName);
+        if (event.code === "Space" && !editable) { event.preventDefault(); togglePlayback(); }
+        if ((event.code === "ArrowLeft" || event.code === "ArrowRight") && !editable) {
+          event.preventDefault(); stop();
+          const limit = currentSession().replay.seconds.length - 1;
+          state.frame = Math.max(0, Math.min(limit, state.frame + (event.code === "ArrowRight" ? 1 : -1)));
+          renderDynamic();
+        }
+      });
+      let resizeFrame = 0;
+      new ResizeObserver(() => {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(() => { drawTraces(); drawAggregate(); });
+      }).observe(document.querySelector("main"));
+      document.addEventListener("visibilitychange", () => { if (document.hidden) stop(); });
+
+      populateControls(); buildPlots(); buildTable(); fillStaticContent(); fullRender();
+    })();
+  </script>
+</body>
+</html>

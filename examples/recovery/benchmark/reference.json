@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "budget_seconds": 30,
+  "base_alpha": 1.0,
+  "alphas": [
+    0.001,
+    0.01,
+    0.1,
+    1.0,
+    10.0,
+    100.0
+  ],
+  "baseline_methods": [
+    "frozen",
+    "recenter",
+    "scratch",
+    "anchored",
+    "output_affine"
+  ],
+  "baselines": [
+    {
+      "method": "frozen",
+      "budget_seconds": 30,
+      "alpha": 0.0,
+      "mean_r2": 0.10486980641844786,
+      "day_scores": [
+        {
+          "day": "19250115",
+          "r2": 0.07282811179968961
+        },
+        {
+          "day": "19250119",
+          "r2": 0.12612503425611088
+        },
+        {
+          "day": "19250120",
+          "r2": 0.11565627319954305
+        }
+      ]
+    },
+    {
+      "method": "recenter",
+      "budget_seconds": 30,
+      "alpha": 0.0,
+      "mean_r2": 0.11137809639960766,
+      "day_scores": [
+        {
+          "day": "19250115",
+          "r2": 0.08452572997246482
+        },
+        {
+          "day": "19250119",
+          "r2": 0.1338197119620633
+        },
+        {
+          "day": "19250120",
+          "r2": 0.11578884726429486
+        }
+      ]
+    },
+    {
+      "method": "scratch",
+      "budget_seconds": 30,
+      "alpha": 1.0,
+      "mean_r2": 0.22460458888926463,
+      "day_scores": [
+        {
+          "day": "19250115",
+          "r2": 0.1795218567111744
+        },
+        {
+          "day": "19250119",
+          "r2": 0.22426928484264053
+        },
+        {
+          "day": "19250120",
+          "r2": 0.27002262511397895
+        }
+      ]
+    },
+    {
+      "method": "anchored",
+      "budget_seconds": 30,
+      "alpha": 1.0,
+      "mean_r2": 0.2710631730770345,
+      "day_scores": [
+        {
+          "day": "19250115",
+          "r2": 0.2245467243997037
+        },
+        {
+          "day": "19250119",
+          "r2": 0.2941181930176838
+        },
+        {
+          "day": "19250120",
+          "r2": 0.2945246018137158
+        }
+      ]
+    },
+    {
+      "method": "output_affine",
+      "budget_seconds": 30,
+      "alpha": 0.1,
+      "mean_r2": 0.12373853367659277,
+      "day_scores": [
+        {
+          "day": "19250115",
+          "r2": 0.09732235466645747
+        },
+        {
+          "day": "19250119",
+          "r2": 0.14016286962279323
+        },
+        {
+          "day": "19250120",
+          "r2": 0.1337303767405276
+        }
+      ]
+    }
+  ],
+  "folds": [
+    {
+      "day": "19250115",
+      "file": "19250115.npz",
+      "sha256": "ce347d45b554c443de0cdd72b4d3fa5c17dd5757a9fae6b34a51425d07ab2dcf",
+      "training_days": [
+        "19250101",
+        "19250108",
+        "19250113"
+      ],
+      "calibration_bins": 1500,
+      "scored_calibration_bins": 1442,
+      "evaluation_bins": 2987,
+      "calibration_files": [
+        "sub-HumanPitt-held-in-calib_ses-19250115T110633",
+        "sub-HumanPitt-held-in-calib_ses-19250115T111328"
+      ],
+      "evaluation_files": [
+        "sub-HumanPitt-held-in-minival_ses-19250115T110633",
+        "sub-HumanPitt-held-in-minival_ses-19250115T111328"
+      ]
+    },
+    {
+      "day": "19250119",
+      "file": "19250119.npz",
+      "sha256": "9104ea2f7f0c61d832bbfe3245289c244287b69c20d919635b578a88a12f0887",
+      "training_days": [
+        "19250101",
+        "19250108",
+        "19250113",
+        "19250115"
+      ],
+      "calibration_bins": 1500,
+      "scored_calibration_bins": 1443,
+      "evaluation_bins": 3132,
+      "calibration_files": [
+        "sub-HumanPitt-held-in-calib_ses-19250119T113543",
+        "sub-HumanPitt-held-in-calib_ses-19250119T114045"
+      ],
+      "evaluation_files": [
+        "sub-HumanPitt-held-in-minival_ses-19250119T113543",
+        "sub-HumanPitt-held-in-minival_ses-19250119T114045"
+      ]
+    },
+    {
+      "day": "19250120",
+      "file": "19250120.npz",
+      "sha256": "9615dc598c745a88dffacaaf27fab716cc12d9c6e00d0e7643367d23db816a30",
+      "training_days": [
+        "19250101",
+        "19250108",
+        "19250113",
+        "19250115",
+        "19250119"
+      ],
+      "calibration_bins": 1500,
+      "scored_calibration_bins": 1436,
+      "evaluation_bins": 2952,
+      "calibration_files": [
+        "sub-HumanPitt-held-in-calib_ses-19250120T115044",
+        "sub-HumanPitt-held-in-calib_ses-19250120T115537"
+      ],
+      "evaluation_files": [
+        "sub-HumanPitt-held-in-minival_ses-19250120T115044",
+        "sub-HumanPitt-held-in-minival_ses-19250120T115537"
+      ]
+    }
+  ],
+  "protocol_sha256": "2823b335d36a74f0bab7225a025ab9df25fa8f01bae5bd431b2a02ae836f90f1",
+  "original_selection_sha256": "0cfd353a9aeb0207be5423ac9228fa8e8077102b597c4e7578f19ae389cd709f",
+  "scope": "Development-only optimization on three earlier-day forward folds. Previously inspected later-day recordings are excluded; this is not a new holdout claim."
+}
