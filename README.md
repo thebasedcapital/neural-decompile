@@ -43,7 +43,7 @@ The label-free front-end alone beats every earlier configuration, including one 
 
 ```bash
 git clone https://github.com/thebasedcapital/neural-decompile && cd neural-decompile
-make recovery        # needs Rust + uv; fetches pinned public data once (~100 MB), ~2 min on a laptop CPU
+make recovery        # needs Rust + uv; fetches pinned public data once (~100 MB); ~2–3 min on an 8-core CPU
 xdg-open results/recovery.html   # or open it in any browser
 ```
 
