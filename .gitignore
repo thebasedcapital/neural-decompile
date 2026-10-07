@@ -5,3 +5,6 @@ __pycache__/
 *.py[cod]
 .venv/
 /examples/recovery/data/
+
+# Precomputed training features: regenerate with scripts/recovery/preprocess_training.py
+results/recovery-training/*.npz
