@@ -1,5 +1,5 @@
-use crate::quantize::{QuantizedRnn, QuantizedTransformer, QuantizedLayer};
-use crate::trace::{trace_quantized, Trace, trace_transformer, TransformerTrace};
+use crate::quantize::QuantizedRnn;
+use crate::trace::{trace_quantized, Trace, trace_transformer};
 use crate::verify::TestCase;
 use crate::transformer::Transformer;
 use ndarray::Array2;
@@ -27,9 +27,9 @@ fn find_active_neurons(traces: &[Trace], hidden_dim: usize) -> Vec<bool> {
 
     for trace in traces {
         for step in &trace.steps {
-            for i in 0..hidden_dim {
+            for (i, active) in ever_active.iter_mut().enumerate() {
                 if step.hidden[i] > 0.0 {
-                    ever_active[i] = true;
+                    *active = true;
                 }
             }
         }
@@ -44,8 +44,8 @@ fn max_activations(traces: &[Trace], hidden_dim: usize) -> Vec<f64> {
 
     for trace in traces {
         for step in &trace.steps {
-            for i in 0..hidden_dim {
-                maxes[i] = maxes[i].max(step.hidden[i]);
+            for (i, maximum) in maxes.iter_mut().enumerate() {
+                *maximum = maximum.max(step.hidden[i]);
             }
         }
     }

@@ -87,14 +87,9 @@ fn parse_transition_line(line: &str, hidden_dim: usize, input_dim: usize)
     }
 
     // Strip "max(0, " and trailing ")"
-    let inner = if rhs.starts_with("max(0,") {
-        let s = &rhs[6..]; // skip "max(0,"
+    let inner = if let Some(s) = rhs.strip_prefix("max(0,") {
         let s = s.trim();
-        if s.ends_with(')') {
-            &s[..s.len() - 1]
-        } else {
-            s
-        }
+        s.strip_suffix(')').unwrap_or(s)
     } else {
         bail!("Expected 'max(0, ...)' or '0', got: '{}'", rhs);
     };
@@ -305,11 +300,7 @@ pub fn program_to_json(prog: &ParsedProgram) -> String {
 }
 
 fn format_weight(v: f64) -> String {
-    if (v - v.round()).abs() < 0.001 {
-        format!("{:.1}", v.round())
-    } else {
-        format!("{:.4}", v)
-    }
+    v.to_string()
 }
 
 /// Load a decompiled program from file and convert to weight JSON

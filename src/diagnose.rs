@@ -1,4 +1,4 @@
-use crate::quantize::{QuantizedRnn, QuantizedTransformer};
+use crate::quantize::QuantizedRnn;
 use crate::trace::{trace_quantized, trace_raw, trace_transformer};
 use crate::verify::{TestCase, TransformerTest};
 use crate::weights::RnnWeights;
@@ -143,9 +143,9 @@ fn diagnose_failure(
     for (t, (rs, qs)) in raw_trace.steps.iter().zip(quant_trace.steps.iter()).enumerate() {
         for i in 0..rnn.hidden_dim {
             let delta = (rs.hidden[i] - qs.hidden[i]).abs();
-            if delta > 0.01 {
-                if divergence.is_none()
-                    || delta > divergence.as_ref().unwrap().delta
+            if delta > 0.01
+                && (divergence.is_none()
+                    || delta > divergence.as_ref().unwrap().delta)
                 {
                     divergence = Some(DivergencePoint {
                         timestep: t,
@@ -155,7 +155,6 @@ fn diagnose_failure(
                         delta,
                     });
                 }
-            }
         }
     }
 
@@ -247,7 +246,7 @@ pub fn run_diagnosis(
 pub fn format_diagnosis(report: &DiagnoseReport) -> String {
     let mut out = String::new();
 
-    out.push_str(&format!("═══ DIAGNOSIS REPORT ═══\n"));
+    out.push_str("═══ DIAGNOSIS REPORT ═══\n");
     out.push_str(&format!("Pass: {}/{}  Fail: {}\n\n", report.passed, report.total, report.failed));
 
     // Global suspect weights

@@ -1,5 +1,7 @@
 # NeurIPS / ICML Reproducibility Checklist
 
+> Historical manuscript checklist; not an audit of the current checkout. The original mod-3 network fails at `10100001`; unrestricted correctness and historical “13/13”/MIPS-superiority claims must not be reused as current evidence. See [the extraction/repair result](../results/algorithm-extraction.md), [generated benchmark](../results/benchmark.md), and [explicit Kani domains](../kani-proofs/RESULTS.md). The earlier LLM experiments below have not been rerun in this upgrade.
+
 ## Code and Data
 
 | Item | Answer | Details |

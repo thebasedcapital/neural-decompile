@@ -1,0 +1,3 @@
+# raw NWB (29 MB) is re-downloaded by scripts/bci/prepare.py; binned cache is small but also derived
+data/*.nwb
+data/*.part

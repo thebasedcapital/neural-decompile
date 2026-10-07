@@ -1,63 +1,77 @@
-/// Decompiled RNN for "parity3" — returns 1 if sum(bits) is odd, 0 if even.
-///
-/// Circuit (3 hidden dims, exactly 3 steps, no padding):
-///   h0 = (h1 + h2 + 3*x0 - x1).max(0)
-///   h1 = (-h1 + h2 + 2*x0 - x1 + 1).max(0)
-///   h2 = (h0 + h1 - h2 + x0 - x1).max(0)
-///   logits = [-2*h0 + 2*h1 + 2*h2 - 1, 2*h0 - 2*h1 - 2*h2 + 1]
-///
-/// Input: [1,0]=bit0, [0,1]=bit1. Always exactly 3 steps.
+//! parity3 — class 1 iff the number of 1-bits among exactly 3 input bits is odd.
+//!
+//! Circuit: `crate::generated::parity3` (= `nd decompile examples/parity3.json --format rust-kani`).
+//!
+//! # Scope
+//!
+//! The network is only meaningful at length exactly 3 (no padding symbol exists for it): its input
+//! domain is the 2^3 = 8 bit triples, and `verify_parity3` checks **all 8** — a *complete* proof
+//! over the circuit's domain, not a bounded approximation of a longer one. It is NOT an
+//! induction-friendly parity machine: the circuit does not compute parity at other lengths
+//! (`wrong_at_length_2` / `wrong_at_length_4` are Kani-checked witnesses), so no unbounded
+//! proof exists or is claimed.
 
-fn parity3_decompiled(seq: &[[i64; 2]; 3]) -> usize {
-    let mut h: [i64; 3] = [0, 0, 0];
+use crate::generated::parity3 as nd;
 
-    let mut i = 0;
-    while i < 3 {
-        let x0 = seq[i][0];
-        let x1 = seq[i][1];
-
-        let h0 = (h[1] + h[2] + 3 * x0 - x1).max(0);
-        let h1 = (-h[1] + h[2] + 2 * x0 - x1 + 1).max(0);
-        let h2 = (h[0] + h[1] - h[2] + x0 - x1).max(0);
-        h = [h0, h1, h2];
-        i += 1;
-    }
-
-    let l0 = -2 * h[0] + 2 * h[1] + 2 * h[2] - 1;
-    let l1 = 2 * h[0] - 2 * h[1] - 2 * h[2] + 1;
-    if l1 > l0 { 1 } else { 0 }
-}
-
-fn spec_parity3(seq: &[[i64; 2]; 3]) -> usize {
+pub fn spec_parity3(seq: &[[i64; 2]; 3]) -> usize {
     let mut ones = 0u8;
     let mut i = 0;
     while i < 3 {
-        if seq[i][1] == 1 { ones += 1; }
+        if seq[i][1] == 1 {
+            ones += 1;
+        }
         i += 1;
     }
     (ones % 2) as usize
+}
+
+pub fn spec_parity(seq: &[[i64; 2]], len: usize) -> usize {
+    let mut ones = 0usize;
+    let mut i = 0;
+    while i < len {
+        if seq[i][1] == 1 {
+            ones += 1;
+        }
+        i += 1;
+    }
+    ones % 2
 }
 
 #[cfg(kani)]
 mod proofs {
     use super::*;
 
-    /// Prove: for ALL 3-bit binary inputs, decompiled == parity spec.
+    /// COMPLETE over the 8-element input domain.
     #[kani::proof]
-    #[kani::unwind(4)]
+    #[kani::unwind(5)]
     fn verify_parity3() {
-        let mut seq: [[i64; 2]; 3] = [[0, 0]; 3];
+        let mut seq = [[0i64; 2]; 3];
         let mut i = 0;
         while i < 3 {
             let bit: u8 = kani::any();
             kani::assume(bit <= 1);
-            if bit == 0 { seq[i] = [1, 0]; } else { seq[i] = [0, 1]; }
+            seq[i] = if bit == 0 { [1, 0] } else { [0, 1] };
             i += 1;
         }
+        assert_eq!(nd::decompiled(&seq, 3), spec_parity3(&seq));
+    }
 
-        let result = parity3_decompiled(&seq);
-        let expected = spec_parity3(&seq);
-        assert_eq!(result, expected);
+    /// Witness: bits 1,1 (parity 0) are classified 1 by the circuit run for 2 steps.
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn wrong_at_length_2() {
+        let seq = [[0i64, 1], [0, 1]];
+        assert_eq!(spec_parity(&seq, 2), 0);
+        assert_eq!(nd::decompiled(&seq, 2), 1);
+    }
+
+    /// Witness: bits 1,1,1,1 (parity 0) at length 4 — see `wrong_at_length_4_is_a_real_witness` test
+    /// for the search that produced it; here Kani re-checks that the circuit disagrees.
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn wrong_at_length_4() {
+        let seq = [[0i64, 1], [0, 1], [0, 1], [0, 1]];
+        assert_ne!(nd::decompiled(&seq, 4), spec_parity(&seq, 4));
     }
 }
 
@@ -66,26 +80,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_all_parity3() {
+    fn all_parity3() {
         for a in 0..=1u8 {
             for b in 0..=1u8 {
                 for c in 0..=1u8 {
-                    let seq: [[i64; 2]; 3] = [
-                        if a == 0 { [1, 0] } else { [0, 1] },
-                        if b == 0 { [1, 0] } else { [0, 1] },
-                        if c == 0 { [1, 0] } else { [0, 1] },
-                    ];
+                    let f = |x: u8| if x == 0 { [1i64, 0] } else { [0, 1] };
+                    let seq = [f(a), f(b), f(c)];
                     let expected = ((a + b + c) % 2) as usize;
-                    assert_eq!(
-                        parity3_decompiled(&seq), expected,
-                        "Decompiled failed for ({},{},{})", a, b, c
-                    );
-                    assert_eq!(
-                        spec_parity3(&seq), expected,
-                        "Spec failed for ({},{},{})", a, b, c
-                    );
+                    assert_eq!(nd::decompiled(&seq, 3), expected);
+                    assert_eq!(spec_parity3(&seq), expected);
                 }
             }
         }
+    }
+
+    #[test]
+    fn wrong_at_length_4_is_a_real_witness() {
+        let seq = [[0i64, 1], [0, 1], [0, 1], [0, 1]];
+        assert_ne!(nd::decompiled(&seq, 4), spec_parity(&seq, 4));
     }
 }

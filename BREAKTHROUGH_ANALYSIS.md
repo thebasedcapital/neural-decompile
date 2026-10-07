@@ -1,5 +1,7 @@
 # Neural Decompiler — Breakthrough Analysis
 
+> Historical analysis, not current verification evidence. The original mod-3 network fails on `10100001` despite passing its length-1–7 fixtures. See [automatic extraction and certified repair](results/algorithm-extraction.md), [the regenerated benchmark](results/benchmark.md), and [precise proof domains](kani-proofs/RESULTS.md). The unrestricted “ALL inputs,” old task totals, and MIPS-superiority claims below are not supported as current submission claims.
+
 ## Current State (March 30, 2026)
 
 ### Achievements

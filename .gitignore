@@ -1,3 +1,7 @@
 /target
 kani-proofs/target/
 .codex-session
+__pycache__/
+*.py[cod]
+.venv/
+/examples/recovery/data/

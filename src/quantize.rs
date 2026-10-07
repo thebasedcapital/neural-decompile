@@ -34,7 +34,6 @@ pub struct QuantizedLayer {
     pub ln1_beta: Vec<f64>,
     pub ln2_gamma: Vec<f64>,
     pub ln2_beta: Vec<f64>,
-    pub d_model: usize,
     pub n_heads: usize,
     pub d_ff: usize,
     pub gelu: bool,
@@ -160,7 +159,6 @@ pub fn quantize_transformer(t: &Transformer, eps: f64) -> QuantizedTransformer {
             ln1_beta: quantize_vec(&l.ln1_beta, eps),
             ln2_gamma: quantize_vec(&l.ln2_gamma, eps),
             ln2_beta: quantize_vec(&l.ln2_beta, eps),
-            d_model: l.d_model,
             n_heads: l.n_heads,
             d_ff: l.d_ff,
             gelu: l.gelu,
@@ -185,21 +183,11 @@ pub fn quantize_transformer(t: &Transformer, eps: f64) -> QuantizedTransformer {
 /// Stats for transformer weights
 pub struct TransformerStats {
     pub total_params: usize,
-    pub integer_count: usize,
     pub pct_integer: f64,
-    pub layer_stats: Vec<LayerStats>,
-}
-
-pub struct LayerStats {
-    pub attn_int: usize,
-    pub attn_total: usize,
-    pub ffn_int: usize,
-    pub ffn_total: usize,
 }
 
 pub fn transformer_stats(t: &QuantizedTransformer) -> TransformerStats {
     let mut all_weights: Vec<f64> = Vec::new();
-    let mut layer_stats = Vec::new();
 
     // Embeddings
     for row in &t.token_emb {
@@ -222,16 +210,6 @@ pub fn transformer_stats(t: &QuantizedTransformer) -> TransformerStats {
         let mut ffn_weights: Vec<f64> = Vec::new();
         ffn_weights.extend(layer.w_ff_in.iter().copied());
         ffn_weights.extend(layer.w_ff_out.iter().copied());
-
-        let attn_int = attn_weights.iter().filter(|&&v| (v - v.round()).abs() < 0.01).count();
-        let ffn_int = ffn_weights.iter().filter(|&&v| (v - v.round()).abs() < 0.01).count();
-
-        layer_stats.push(LayerStats {
-            attn_int,
-            attn_total: attn_weights.len(),
-            ffn_int,
-            ffn_total: ffn_weights.len(),
-        });
 
         all_weights.extend(attn_weights);
         all_weights.extend(ffn_weights);
@@ -258,8 +236,6 @@ pub fn transformer_stats(t: &QuantizedTransformer) -> TransformerStats {
 
     TransformerStats {
         total_params: total,
-        integer_count,
         pct_integer: integer_count as f64 / total as f64,
-        layer_stats,
     }
 }

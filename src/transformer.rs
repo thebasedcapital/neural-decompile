@@ -345,7 +345,3 @@ fn gelu(x: f64) -> f64 {
     // Approximate GELU: 0.5 * x * (1 + tanh(sqrt(2/π) * (x + 0.044715 * x^3)))
     0.5 * x * (1.0 + ((0.7978845608 * (x + 0.044715 * x.powi(3))).tanh()))
 }
-
-pub fn load_transformer(path: &std::path::Path) -> Result<Transformer> {
-    Transformer::from_json(path)
-}

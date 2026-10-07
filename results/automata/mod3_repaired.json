@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "model_sha256": "dce446ac0cf97858a3349f5b422cba2990b84e80f64c13eb549863d980b140d2",
+  "epsilon": 0.15,
+  "domain": "nonnegative mathematical-integer hidden states; one-hot binary inputs; first-argmax output",
+  "proof": {
+    "method": "exact_reachable_closure"
+  },
+  "abstraction_attempts": [],
+  "reachable": {
+    "states": [
+      [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        2,
+        0,
+        0,
+        0
+      ],
+      [
+        4,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        4,
+        2,
+        0,
+        0
+      ]
+    ],
+    "transitions": [
+      [
+        0,
+        1
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        4,
+        2
+      ],
+      [
+        2,
+        0
+      ]
+    ],
+    "outputs": [
+      1,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "minimal": {
+    "initial": 0,
+    "transitions": [
+      [
+        0,
+        1
+      ],
+      [
+        2,
+        0
+      ],
+      [
+        1,
+        2
+      ]
+    ],
+    "outputs": [
+      1,
+      0,
+      0
+    ],
+    "state_partition": [
+      0,
+      1,
+      2,
+      2,
+      1
+    ]
+  },
+  "arithmetic_bridge": {
+    "status": "exact_f64_and_i64",
+    "absolute_operation_bound": 24,
+    "sufficient_exact_integer_bound": 9007199254740992
+  },
+  "specification": {
+    "name": "divisible_by_3",
+    "equivalent": true,
+    "product_states_visited": 3
+  },
+  "repair_search": {
+    "edit": {
+      "parameter": "W_hh",
+      "index": [
+        3,
+        0
+      ],
+      "before": 1,
+      "after": 0,
+      "product_states": 5
+    },
+    "radius": 1,
+    "state_limit": 256,
+    "candidate_counts": {
+      "mismatch": 97,
+      "unresolved": 0,
+      "equivalent": 7
+    },
+    "scope": "one edit to the snapped integer model; exact product-closure certification",
+    "original_sha256": "ca5a474ce152558a25b044631befb9b8bb4baf12b00e801d025fce66ca2aa327"
+  }
+}

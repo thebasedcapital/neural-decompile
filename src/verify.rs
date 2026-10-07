@@ -18,13 +18,6 @@ pub struct TransformerTest {
     pub expected: usize,  // argmax of logits at last position
 }
 
-/// Transformer verification with full logits comparison
-#[derive(Deserialize)]
-pub struct TransformerLogitsTest {
-    pub tokens: Vec<usize>,
-    pub expected_logits: Vec<f64>,  // expected logits at last position
-}
-
 pub struct VerifyResults {
     pub total: usize,
     pub passed: usize,
@@ -80,57 +73,6 @@ pub fn run_verification(q: &QuantizedRnn, tests: &[TestCase]) -> VerifyResults {
     }
 }
 
-/// Verify transformer by running forward pass and comparing argmax
-pub fn verify_transformer(t: &Transformer, tests: &[TransformerTest]) -> TransformerVerifyResults {
-    let mut passed = 0;
-    let mut failures = Vec::new();
-
-    for tc in tests {
-        let logits = t.forward(&tc.tokens);
-        let last_logits = logits.last().unwrap();
-        let got = argmax(last_logits);
-
-        if got == tc.expected {
-            passed += 1;
-        } else {
-            failures.push(TransformerFailure {
-                tokens: tc.tokens.clone(),
-                expected: tc.expected,
-                got,
-                logits: last_logits.clone(),
-            });
-        }
-    }
-
-    TransformerVerifyResults {
-        total: tests.len(),
-        passed,
-        failures,
-    }
-}
-
-/// Verify transformer logits directly (for numerical verification)
-pub fn verify_transformer_logits(t: &Transformer, tests: &[TransformerLogitsTest], tolerance: f64) -> (usize, usize) {
-    let mut passed = 0;
-    let total = tests.len();
-
-    for tc in tests {
-        let logits = t.forward(&tc.tokens);
-        let last_logits = logits.last().unwrap();
-
-        // Compare each logit within tolerance
-        let matches = last_logits.len() == tc.expected_logits.len()
-            && last_logits.iter().zip(tc.expected_logits.iter())
-                .all(|(a, b)| (a - b).abs() < tolerance);
-
-        if matches {
-            passed += 1;
-        }
-    }
-
-    (passed, total)
-}
-
 /// Verify that decompiled transformer produces same logits as original
 /// Uses tolerance-based comparison for numerical accuracy
 pub fn verify_decompiled_transformer(
@@ -140,7 +82,7 @@ pub fn verify_decompiled_transformer(
 ) -> TransformerVerifyResults {
     let mut passed = 0;
     let mut failures = Vec::new();
-    let tolerance = 0.01;  // 1% tolerance for numerical differences
+    let tolerance = 0.01;  // Absolute logit-error tolerance, not relative percent.
 
     for tc in tests {
         // Run original
@@ -153,12 +95,11 @@ pub fn verify_decompiled_transformer(
         let quant_last = quant_logits.last().unwrap();
         let quant_argmax = argmax(quant_last);
 
-        // Compare logits numerically within tolerance
+        // Near-tie logits can pass the numeric tolerance but change the class.
         let logits_match = orig_last.iter().zip(quant_last.iter())
             .all(|(a, b)| (a - b).abs() < tolerance);
 
-        // Both must match: numerical logits AND classification output
-        if logits_match && orig_argmax == tc.expected {
+        if logits_match && orig_argmax == tc.expected && quant_argmax == tc.expected {
             passed += 1;
         } else {
             failures.push(TransformerFailure {
@@ -209,8 +150,8 @@ fn forward_quantized(t: &QuantizedTransformer, tokens: &[usize]) -> Vec<Vec<f64>
     hidden.iter().map(|h| {
         (0..t.vocab_size).map(|j| {
             let mut s = t.b_out.as_ref().map(|b| b[j]).unwrap_or(0.0);
-            for i in 0..t.d_model {
-                s += h[i] * t.w_out[i * t.vocab_size + j];
+            for (i, &h_i) in h[..t.d_model].iter().enumerate() {
+                s += h_i * t.w_out[i * t.vocab_size + j];
             }
             s
         }).collect()
@@ -323,8 +264,11 @@ fn matmul(x: &[Vec<f64>], w: &[f64], in_dim: usize, out_dim: usize, bias: Option
 }
 
 fn argmax(v: &[f64]) -> usize {
-    v.iter().enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .map(|(i, _)| i)
-        .unwrap_or(0)
+    // First-index-wins on ties, matching fsm::run_fsm / emitted code —
+    // NOT Rust's max_by, which keeps the *last* max on ties.
+    let mut best = 0;
+    for (i, &x) in v.iter().enumerate() {
+        if x > v[best] { best = i; }
+    }
+    best
 }

@@ -1,0 +1,35 @@
+{
+  "dandiset": "000140",
+  "dandiset_name": "MC_Maze_Small: macaque primary motor and dorsal premotor cortex spiking activity during delayed reaching",
+  "citation": "Churchland, Mark; Kaufman, Matthew (2022) MC_Maze_Small: macaque primary motor and dorsal premotor cortex spiking activity during delayed reaching (Version 0.220113.0408) [Data set]. DANDI Archive. https://doi.org/10.48324/dandi.000140/0.220113.0408",
+  "license": "CC-BY-4.0",
+  "dandiset_versions_checked": ["draft", "0.220113.0408"],
+  "asset_used": {
+    "path": "sub-Jenkins/sub-Jenkins_ses-small_desc-train_behavior+ecephys.nwb",
+    "asset_id": "7821971e-c6a4-4568-8773-1bfa205c13f8",
+    "size_bytes": 29207528,
+    "sha2_256": "dcaf3a524e2b2f65f163ee3b07789b8474bdfc6ca66098bc542ab93dff489884",
+    "dandi_etag": "142f6daa30d6c20d7e8e1976b65d45a8-1",
+    "identical_across_versions": "same asset_id/blob/digest in both draft and published version 0.220113.0408",
+    "verified_by": "sha256sum of downloaded file in examples/bci/data/, matches digest returned by DANDI asset API"
+  },
+  "asset_not_used": {
+    "path": "sub-Jenkins/sub-Jenkins_ses-small_desc-test_ecephys.nwb",
+    "size_bytes": 689312,
+    "reason": "spiking-only release of the dataset's held-out test split with no published behavior/target labels; cannot be used for supervised quadrant labels, so prepare.py never downloads it"
+  },
+  "subject_session": "single macaque (sub-Jenkins), single session ('small' maze). One subject/session: these results are NOT evidence of cross-day or cross-subject stability.",
+  "approach": "electrophysiological approach (Utah-array-style ephys electrode recording), primary motor and dorsal premotor cortex",
+  "local_trial_split": {
+    "note": "this is the dataset's OWN published train/val partition stored in the NWB intervals/trials/split field, not a split we chose",
+    "n_total_trials": 100,
+    "n_train": 75,
+    "n_val_heldout": 25,
+    "label_bincount_all_trials": [18, 35, 23, 24],
+    "label_bincount_heldout_val": [4, 9, 6, 6],
+    "majority_class_heldout": 1,
+    "majority_baseline_acc_heldout": 0.36,
+    "heldout_trial_indices_into_local_trials_npz": "see examples/bci/reach_decoder_meta.json:test_trial_indices"
+  },
+  "usage_note": "Offline, retrospective reach-quadrant classification from a public macaque ephys dataset. No human subjects, no clinical application, no causal/implant claims; this is decompiler weight-interpretability work, not a BCI control system."
+}

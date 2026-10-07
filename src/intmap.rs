@@ -27,25 +27,8 @@ pub struct TensorIntMap {
     /// Number of "fully integer" rows (>95% near-int)
     pub n_int_rows: usize,
     pub n_total_rows: usize,
-    /// SCALE-AWARE: best discovered quantization unit and how well it fits
-    pub best_unit: Option<QuantUnit>,
     /// Per-block entropy analysis (Q4_0/Q8_0 only)
     pub block_entropy: Option<BlockEntropy>,
-}
-
-/// Scale-aware integer structure: "do these weights snap to multiples of some unit?"
-#[derive(Debug, Clone)]
-pub struct QuantUnit {
-    /// The discovered base unit (e.g., 0.0046 for Q4_0 scales)
-    pub unit: f64,
-    /// What fraction of non-zero weights are within eps*unit of an integer multiple of unit
-    pub pct_on_grid: f64,
-    /// How many distinct grid points are actually used
-    pub n_grid_points: usize,
-    /// The effective "integer range" — max(|round(w/unit)|)
-    pub effective_range: i64,
-    /// Ratio of used grid points to possible grid points (sparsity of the grid)
-    pub grid_utilization: f64,
 }
 
 /// Entropy analysis: how many of the possible quantization levels does this tensor actually use?
@@ -72,108 +55,6 @@ pub struct IntMapReport {
     pub n_skipped: usize,
     pub tensors: Vec<TensorIntMap>,
     pub eps: f64,
-}
-
-/// Try to find the best quantization unit: a value `u` such that most weights are near `k*u` for integer k
-fn find_quant_unit(data: &[f32], eps: f64) -> Option<QuantUnit> {
-    // Skip if too few non-zero values
-    let nonzero: Vec<f64> = data.iter()
-        .map(|&w| w as f64)
-        .filter(|&w| w.abs() > 1e-10)
-        .collect();
-
-    if nonzero.len() < 100 {
-        return None;
-    }
-
-    // Strategy: find the smallest common interval
-    // Take absolute values, sort, compute pairwise differences of nearby values
-    let mut abs_vals: Vec<f64> = nonzero.iter().map(|w| w.abs()).collect();
-    abs_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
-
-    // Sample differences between consecutive sorted values
-    let mut diffs: Vec<f64> = Vec::new();
-    let step = (abs_vals.len() / 5000).max(1);
-    for i in (0..abs_vals.len() - 1).step_by(step) {
-        let d = abs_vals[i + 1] - abs_vals[i];
-        if d > 1e-10 {
-            diffs.push(d);
-        }
-    }
-    if diffs.is_empty() {
-        return None;
-    }
-    diffs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-
-    // The quantization unit is likely near the median of small differences
-    // Also try: min nonzero abs value, and the scale factor from Q4_0 (data range / 15)
-    let max_val = abs_vals.last().copied().unwrap_or(1.0);
-    let candidates = vec![
-        diffs[diffs.len() / 4],          // 25th percentile diff
-        diffs[diffs.len() / 2],          // median diff
-        abs_vals[0],                      // smallest nonzero |w|
-        max_val / 7.0,                   // divide range by ~half of Q4 levels
-        max_val / 15.0,                  // Q4_0: 16 levels, range / 15
-        max_val / 31.0,                  // Q5: 32 levels
-        max_val / 127.0,                 // Q8: 256 levels
-    ];
-
-    let mut best: Option<QuantUnit> = None;
-
-    for unit in candidates {
-        if unit < 1e-10 || unit > max_val {
-            continue;
-        }
-
-        let mut on_grid = 0usize;
-        let mut grid_points = std::collections::HashSet::new();
-        let mut max_k: i64 = 0;
-
-        for &w in &nonzero {
-            let k = (w / unit).round();
-            let residual = (w - k * unit).abs();
-            if residual < eps * unit {
-                on_grid += 1;
-                grid_points.insert(k as i64);
-                let abs_k = k.abs() as i64;
-                if abs_k > max_k {
-                    max_k = abs_k;
-                }
-            }
-        }
-
-        let pct = on_grid as f64 / nonzero.len() as f64 * 100.0;
-        let effective_range = max_k;
-        let possible_points = (2 * max_k + 1) as usize;
-        let util = if possible_points > 0 {
-            grid_points.len() as f64 / possible_points as f64
-        } else {
-            0.0
-        };
-
-        // Score: prefer high on-grid %, then low grid utilization (sparse = more structured)
-        let score = pct * 1.0 + (1.0 - util) * 10.0;
-
-        let is_better = match &best {
-            None => true,
-            Some(b) => {
-                let b_score = b.pct_on_grid * 1.0 + (1.0 - b.grid_utilization) * 10.0;
-                score > b_score
-            }
-        };
-
-        if pct > 50.0 && is_better {
-            best = Some(QuantUnit {
-                unit,
-                pct_on_grid: pct,
-                n_grid_points: grid_points.len(),
-                effective_range,
-                grid_utilization: util,
-            });
-        }
-    }
-
-    best
 }
 
 fn analyze_tensor(name: &str, data: &[f32], shape: &str, dtype: &str, eps: f64, dims: &[u64]) -> TensorIntMap {
@@ -213,11 +94,8 @@ fn analyze_tensor(name: &str, data: &[f32], shape: &str, dtype: &str, eps: f64, 
 
     // Sort histogram by count descending
     let mut int_histogram: Vec<(i64, usize)> = int_counts.into_iter().collect();
-    int_histogram.sort_by(|a, b| b.1.cmp(&a.1));
+    int_histogram.sort_by_key(|a| std::cmp::Reverse(a.1));
     int_histogram.truncate(20); // top 20
-
-    // Scale-aware analysis: find the natural quantization unit
-    let best_unit = find_quant_unit(data, eps);
 
     // Per-row analysis (if 2D matrix)
     let (row_hotspots, n_int_rows, n_total_rows) = if dims.len() >= 2 {
@@ -265,7 +143,6 @@ fn analyze_tensor(name: &str, data: &[f32], shape: &str, dtype: &str, eps: f64, 
         row_hotspots,
         n_int_rows,
         n_total_rows,
-        best_unit,
         block_entropy: None, // filled in separately for Q4_0 tensors
     }
 }
@@ -319,7 +196,6 @@ fn compute_block_entropy(blocks: &[[u8; 32]]) -> BlockEntropy {
 pub struct HeadEntropy {
     pub head_idx: usize,
     pub mean_entropy: f64,
-    pub min_entropy: f64,
     pub n_low_entropy_blocks: usize,
     pub n_blocks: usize,
     pub effective_levels: f64,
@@ -342,7 +218,7 @@ fn per_head_entropy(
     // GGUF dims are reversed: dims[0]=cols(d_model), dims[1]=rows(out_dim)
     let cols = info.dims[0] as usize;
     let rows = info.dims[1] as usize;
-    if rows == 0 || n_heads == 0 || rows % n_heads != 0 {
+    if rows == 0 || n_heads == 0 || !rows.is_multiple_of(n_heads) {
         return None;
     }
     let head_dim = rows / n_heads;
@@ -385,7 +261,6 @@ fn per_head_entropy(
         heads.push(HeadEntropy {
             head_idx: h,
             mean_entropy: be.mean_entropy,
-            min_entropy: be.min_entropy,
             n_low_entropy_blocks: be.n_low_entropy_blocks,
             n_blocks: be.n_total_blocks,
             effective_levels: be.effective_levels,
@@ -479,7 +354,9 @@ pub fn run_intmap(
                     }
                 }
 
-                results.push(tm);
+                if tm.pct_near_int.partial_cmp(&min_pct) != Some(std::cmp::Ordering::Less) {
+                    results.push(tm);
+                }
             }
             Err(_) => {
                 skipped += 1;
@@ -508,7 +385,7 @@ pub fn run_intmap(
         let path = std::env::temp_dir().join("nd-intmap.html");
         std::fs::write(&path, &content)?;
         eprintln!("Wrote: {}", path.display());
-        std::process::Command::new("open").arg(&path).spawn()?;
+        crate::visualize::open_in_browser(&path);
     } else {
         print_report(&report);
     }
@@ -682,7 +559,7 @@ fn print_report(report: &IntMapReport) {
                     .enumerate()
                     .map(|(i, &c)| (i, c))
                     .collect();
-                sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                sorted.sort_by_key(|a| std::cmp::Reverse(a.1));
                 let top5: Vec<String> = sorted.iter().take(5)
                     .map(|(lvl, cnt)| {
                         let signed = *lvl as i32 - 8;

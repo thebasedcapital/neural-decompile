@@ -1,21 +1,7 @@
-mod weights;
-mod quantize;
-mod emit;
-mod verify;
-mod fsm;
-mod gguf;
-mod trace;
-mod diagnose;
-mod compare;
-mod visualize;
-mod taxonomy;
-mod diff;
-mod evolve;
-mod patch;
-mod slice;
-mod transformer;
-mod xray;
-mod intmap;
+use neural_decompile::{
+    weights, quantize, emit, verify, gguf, trace, diagnose, compare,
+    visualize, taxonomy, diff, evolve, patch, slice, xray, intmap,
+};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -270,8 +256,8 @@ enum Commands {
         #[arg(short, long, default_value = "0.1")]
         eps: f64,
 
-        /// Only show tensors with >N% near-integer weights
-        #[arg(long, default_value = "5.0")]
+        /// Only show tensors with at least this % of near-integer weights
+        #[arg(long, default_value = "0.0")]
         min_pct: f64,
 
         /// Output as HTML heatmap (opens in browser)
@@ -296,7 +282,7 @@ fn main() -> Result<()> {
             let program = weights::load_neural_program(&input)?;
 
             // Auto-select epsilon based on model type if not specified
-            let eps = eps.unwrap_or_else(|| {
+            let eps = eps.unwrap_or({
                 match &program {
                     weights::NeuralProgram::Rnn(_) => 0.15,
                     weights::NeuralProgram::Transformer(_) => 0.01,
@@ -421,7 +407,7 @@ fn main() -> Result<()> {
                     println!("L∞ to int:     {:.4}", stats.linf_to_int);
                 }
                 weights::NeuralProgram::Transformer(t) => {
-                    use crate::transformer::{Transformer, TransformerBlock};
+                    
 
                     // Calculate total parameters
                     let emb_params = t.vocab_size * t.d_model + t.max_seq_len * t.d_model;
@@ -585,7 +571,7 @@ fn main() -> Result<()> {
                         let path = std::env::temp_dir().join("nd-trace.html");
                         std::fs::write(&path, &html_content)?;
                         eprintln!("Wrote: {}", path.display());
-                        std::process::Command::new("open").arg(&path).spawn()?;
+                        visualize::open_in_browser(&path);
                     } else {
                         println!("── Quantized (eps={}) ──", eps);
                         print!("{}", trace::format_trace(&quant_trace));
@@ -767,7 +753,7 @@ fn main() -> Result<()> {
                         let path = std::env::temp_dir().join(format!("nd-xray-{}.html", name));
                         std::fs::write(&path, &html_content)?;
                         eprintln!("Wrote: {}", path.display());
-                        std::process::Command::new("open").arg(&path).spawn()?;
+                        visualize::open_in_browser(&path);
                     } else {
                         print!("{}", xray::format_xray(&report));
                     }
@@ -792,7 +778,7 @@ fn main() -> Result<()> {
                         let path = std::env::temp_dir().join(format!("nd-xray-{}.html", name));
                         std::fs::write(&path, &html_content)?;
                         eprintln!("Wrote: {}", path.display());
-                        std::process::Command::new("open").arg(&path).spawn()?;
+                        visualize::open_in_browser(&path);
                     } else {
                         print!("{}", xray::format_transformer_xray(&report));
                     }
@@ -833,7 +819,7 @@ fn main() -> Result<()> {
                 let path = std::env::temp_dir().join(format!("nd-evolve-{}.html", name));
                 std::fs::write(&path, &html_content)?;
                 eprintln!("Wrote: {}", path.display());
-                std::process::Command::new("open").arg(&path).spawn()?;
+                visualize::open_in_browser(&path);
             } else {
                 print!("{}", evolve::format_evolve(&report));
             }

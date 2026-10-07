@@ -128,7 +128,7 @@ pub fn compare(a: &QuantizedRnn, b: &QuantizedRnn) -> CompareResult {
 pub fn format_compare(result: &CompareResult) -> String {
     let mut out = String::new();
 
-    out.push_str(&format!("═══ CIRCUIT COMPARISON ═══\n"));
+    out.push_str("═══ CIRCUIT COMPARISON ═══\n");
     out.push_str(&format!("Relationship: {}\n\n", result.relationship));
 
     out.push_str(&format!("Dimensions: A=hd{} B=hd{} {}\n\n",

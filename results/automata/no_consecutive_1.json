@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "model_sha256": "0551ba91ed10eaa790c16900e4186200053360d3614c4eccdba0322198b586d5",
+  "epsilon": 0.15,
+  "domain": "nonnegative mathematical-integer hidden states; one-hot binary inputs; first-argmax output",
+  "proof": {
+    "method": "saturation_homomorphism",
+    "cap": 2,
+    "solver_result": "unsat"
+  },
+  "abstraction_attempts": [
+    {
+      "cap": 0,
+      "solver_result": "sat",
+      "witness": {
+        "h0": 0,
+        "h1": 2
+      }
+    },
+    {
+      "cap": 1,
+      "solver_result": "sat",
+      "witness": {
+        "h0": 0,
+        "h1": 2
+      }
+    },
+    {
+      "cap": 2,
+      "solver_result": "unsat",
+      "witness": null
+    }
+  ],
+  "reachable": {
+    "states": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ]
+    ],
+    "transitions": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "outputs": [
+      1,
+      1,
+      0
+    ]
+  },
+  "minimal": {
+    "initial": 0,
+    "transitions": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "outputs": [
+      1,
+      1,
+      0
+    ],
+    "state_partition": [
+      0,
+      1,
+      2
+    ]
+  },
+  "arithmetic_bridge": {
+    "status": "not_established",
+    "reason": "raw hidden states are not bounded by the saturation quotient"
+  },
+  "specification": {
+    "name": "no_consecutive_1",
+    "equivalent": true,
+    "product_states_visited": 3
+  }
+}

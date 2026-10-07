@@ -1,4 +1,21 @@
 use crate::trace::Trace;
+use std::io::IsTerminal;
+
+/// Best-effort: open a generated HTML report in the default browser.
+/// Failure to launch is reported on stderr but never fails the command —
+/// the file has already been written. Skips the launch entirely when
+/// `ND_NO_BROWSER` is set (automation/CI/benchmarks) or stdout is not a
+/// TTY (non-interactive invocation).
+pub fn open_in_browser(path: &std::path::Path) {
+    if std::env::var_os("ND_NO_BROWSER").is_some() || !std::io::stdout().is_terminal() {
+        eprintln!("(ND_NO_BROWSER set or non-interactive: open {} manually)", path.display());
+        return;
+    }
+    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    if let Err(e) = std::process::Command::new(opener).arg(path).spawn() {
+        eprintln!("(could not launch `{}`: {} — open {} manually)", opener, e, path.display());
+    }
+}
 
 /// Generate a standalone HTML visualization of a trace
 pub fn trace_to_html(trace: &Trace, title: &str) -> String {
@@ -53,7 +70,7 @@ pub fn trace_to_html(trace: &Trace, title: &str) -> String {
     html.push_str(r#"<div class="cell t-col">-</div>"#);
     html.push_str(r#"<div class="cell input-col">—</div>"#);
     for _ in 0..trace.hidden_dim {
-        html.push_str(&format!(r#"<div class="cell" style="background: #1a1b26; color: #565f89;">0</div>"#));
+        html.push_str(r#"<div class="cell" style="background: #1a1b26; color: #565f89;">0</div>"#);
     }
 
     // Each timestep
@@ -92,7 +109,7 @@ pub fn trace_to_html(trace: &Trace, title: &str) -> String {
                     (format!("rgba(122, 162, 247, {:.2})", 0.1 + t * 0.6), "#c0caf5".to_string())
                 } else {
                     // High: orange/gold
-                    let intensity = ((t - 0.5) * 2.0);
+                    let intensity = (t - 0.5) * 2.0;
                     (format!("rgba(224, 175, 104, {:.2})", 0.3 + intensity * 0.7), "#1a1b26".to_string())
                 }
             };

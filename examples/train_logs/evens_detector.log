@@ -1,0 +1,27 @@
+== evens_detector: 62 exhaustive cases, in=2 out=2
+   hidden=2 seed= 0 float_acc=1.000 near_int=1.00
+   hidden=2 seed= 1 float_acc=1.000 near_int=1.00
+   hidden=2 seed= 2 float_acc=1.000 near_int=1.00
+   hidden=2 seed= 3 float_acc=1.000 near_int=1.00
+   hidden=2 seed= 4 float_acc=1.000 near_int=1.00
+   hidden=2 seed= 5 float_acc=1.000 near_int=1.00
+   hidden=2 seed= 6 float_acc=1.000 near_int=1.00
+   hidden=2 seed= 7 float_acc=1.000 near_int=1.00
+   hidden=2 seed= 8 float_acc=1.000 near_int=1.00
+   hidden=2 seed= 9 float_acc=1.000 near_int=1.00
+   hidden=2 seed=10 float_acc=1.000 near_int=1.00
+   hidden=2 seed=11 float_acc=1.000 near_int=1.00
+   hidden=2 seed=12 float_acc=1.000 near_int=1.00
+   hidden=2 seed=13 float_acc=1.000 near_int=1.00
+   hidden=2 seed=14 float_acc=1.000 near_int=1.00
+   hidden=2 seed=15 float_acc=1.000 near_int=1.00
+   hidden=2 seed=16 float_acc=1.000 near_int=1.00
+   hidden=2 seed=17 float_acc=1.000 near_int=1.00
+   hidden=2 seed=18 float_acc=1.000 near_int=1.00
+   hidden=2 seed=19 float_acc=1.000 near_int=0.94
+   hidden=2 seed=20 float_acc=1.000 near_int=1.00
+   hidden=2 seed=21 float_acc=1.000 near_int=1.00
+   hidden=2 seed=22 float_acc=1.000 near_int=1.00
+   hidden=2 seed=23 float_acc=1.000 near_int=1.00
+   hidden=2: 24/24 seeds reach 100% float accuracy (176s)
+   -> exporting hidden=2 seed=0 (near_int=1.00)

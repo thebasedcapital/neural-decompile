@@ -1,0 +1,122 @@
+{
+ "n_test": 25,
+ "majority_baseline_acc": 0.36,
+ "float_acc": 0.84,
+ "quant_acc": 0.84,
+ "float_quant_agreement": 1.0,
+ "emitted_python_agreement": 1.0,
+ "unit_dropout": [
+  {
+   "channel": 0,
+   "dandi_unit_id": 1651,
+   "acc_with_dropout": 0.6,
+   "delta_from_baseline": -0.24,
+   "changed_predictions": 6
+  },
+  {
+   "channel": 1,
+   "dandi_unit_id": 1201,
+   "acc_with_dropout": 0.72,
+   "delta_from_baseline": -0.12,
+   "changed_predictions": 3
+  },
+  {
+   "channel": 2,
+   "dandi_unit_id": 2771,
+   "acc_with_dropout": 0.84,
+   "delta_from_baseline": 0.0,
+   "changed_predictions": 2
+  },
+  {
+   "channel": 3,
+   "dandi_unit_id": 1131,
+   "acc_with_dropout": 0.68,
+   "delta_from_baseline": -0.15999999999999992,
+   "changed_predictions": 4
+  },
+  {
+   "channel": 4,
+   "dandi_unit_id": 1141,
+   "acc_with_dropout": 0.84,
+   "delta_from_baseline": 0.0,
+   "changed_predictions": 0
+  },
+  {
+   "channel": 5,
+   "dandi_unit_id": 1101,
+   "acc_with_dropout": 0.84,
+   "delta_from_baseline": 0.0,
+   "changed_predictions": 5
+  },
+  {
+   "channel": 6,
+   "dandi_unit_id": 1581,
+   "acc_with_dropout": 0.84,
+   "delta_from_baseline": 0.0,
+   "changed_predictions": 5
+  },
+  {
+   "channel": 7,
+   "dandi_unit_id": 1092,
+   "acc_with_dropout": 0.8,
+   "delta_from_baseline": -0.039999999999999925,
+   "changed_predictions": 1
+  },
+  {
+   "channel": 8,
+   "dandi_unit_id": 1091,
+   "acc_with_dropout": 0.84,
+   "delta_from_baseline": 0.0,
+   "changed_predictions": 0
+  },
+  {
+   "channel": 9,
+   "dandi_unit_id": 1031,
+   "acc_with_dropout": 0.84,
+   "delta_from_baseline": 0.0,
+   "changed_predictions": 0
+  },
+  {
+   "channel": 10,
+   "dandi_unit_id": 1191,
+   "acc_with_dropout": 0.84,
+   "delta_from_baseline": 0.0,
+   "changed_predictions": 0
+  },
+  {
+   "channel": 11,
+   "dandi_unit_id": 1171,
+   "acc_with_dropout": 0.88,
+   "delta_from_baseline": 0.040000000000000036,
+   "changed_predictions": 3
+  },
+  {
+   "channel": 12,
+   "dandi_unit_id": 1251,
+   "acc_with_dropout": 0.8,
+   "delta_from_baseline": -0.039999999999999925,
+   "changed_predictions": 1
+  },
+  {
+   "channel": 13,
+   "dandi_unit_id": 1371,
+   "acc_with_dropout": 0.84,
+   "delta_from_baseline": 0.0,
+   "changed_predictions": 1
+  },
+  {
+   "channel": 14,
+   "dandi_unit_id": 1342,
+   "acc_with_dropout": 0.72,
+   "delta_from_baseline": -0.12,
+   "changed_predictions": 5
+  },
+  {
+   "channel": 15,
+   "dandi_unit_id": 2021,
+   "acc_with_dropout": 0.92,
+   "delta_from_baseline": 0.08000000000000007,
+   "changed_predictions": 2
+  }
+ ]
+}

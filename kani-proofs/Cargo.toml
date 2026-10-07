@@ -5,3 +5,6 @@ edition = "2021"
 description = "Formal verification of neural-decompile circuits via Kani"
 
 [dependencies]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

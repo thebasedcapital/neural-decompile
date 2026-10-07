@@ -1,134 +1,97 @@
-/// Complement proof: contains_11 and no_consecutive_1 always return opposite outputs.
-///
-/// Both circuits have IDENTICAL hidden dynamics (same h1 update rule).
-/// The only difference: output logits are swapped.
-///   contains_11:      l0 = -2*h1 + 3,  l1 = 2*h1 - 3
-///   no_consecutive_1: l0 = 2*h1 - 3,   l1 = -2*h1 + 3
-///
-/// This means: contains_11(x) + no_consecutive_1(x) == 1 for all x.
-/// Equivalently: they partition the input space into exact complements.
+//! Complement: `contains_11(x) + no_consecutive_1(x) == 1` for every input.
+//!
+//! Both circuits come straight from `nd` (`crate::generated::{contains_11, no_consecutive_1}`).
+//!
+//! # Unbounded argument (induction on the sequence, any length)
+//!
+//! * `step_functions_identical`: for every hidden value `h` and every input symbol, the two
+//!   emitted `step` functions return the same value (the code is textually identical, and this is
+//!   checked by Kani over h in [-2^61, 2^61]). Hence by induction on the input the two hidden
+//!   states are equal after every prefix — whatever the length.
+//! * `outputs_complementary`: for every hidden value `h`, `c.output(h) + n.output(h) == 1`.
+//!
+//! Combine: after any input both circuits sit at the same `h`, and at the same `h` their outputs
+//! are complementary. No invariant on `h` is needed, so no overflow caveat beyond the |h| <= 2^61
+//! range Kani explores (the identity of the two step functions is textual, so it also holds where
+//! the i64 code would wrap).
 
-/// Contains_11 circuit (from proven module)
-fn contains_11(seq: &[[i64; 2]], len: usize) -> usize {
-    let mut h1: i64 = 0;
-    let mut i = 0;
-    while i < len {
-        let x0 = seq[i][0];
-        let x1 = seq[i][1];
-        h1 = (2 * h1 - x0 + 2 * x1 - 1).max(0);
-        i += 1;
-    }
-    // l0 = -2*h1 + 3, l1 = 2*h1 - 3
-    // l1 > l0 iff h1 >= 2
-    if h1 >= 2 { 1 } else { 0 }
-}
-
-/// No_consecutive_1 circuit — same dynamics, swapped logits
-fn no_consecutive_1(seq: &[[i64; 2]], len: usize) -> usize {
-    let mut h1: i64 = 0;
-    let mut i = 0;
-    while i < len {
-        let x0 = seq[i][0];
-        let x1 = seq[i][1];
-        h1 = (2 * h1 - x0 + 2 * x1 - 1).max(0);
-        i += 1;
-    }
-    // l0 = 2*h1 - 3, l1 = -2*h1 + 3
-    // l1 > l0 iff h1 < 2 (exact opposite)
-    if h1 >= 2 { 0 } else { 1 }
-}
+use crate::generated::{contains_11 as c, no_consecutive_1 as n};
 
 #[cfg(kani)]
 mod proofs {
     use super::*;
+    use crate::common::any_symbol;
 
     const MAX_LEN: usize = 5;
+    const BOUND: i64 = 1 << 61;
 
-    /// Prove: for ALL valid inputs, contains_11(x) + no_consecutive_1(x) == 1.
-    /// They are exact boolean complements.
+    /// BOUNDED (exhaustive): length <= 5, any mix of bit0/bit1/pad, verbatim nd functions.
     #[kani::proof]
-    #[kani::unwind(6)]
+    #[kani::unwind(7)]
     fn verify_complement() {
-        let n_bits: usize = kani::any();
-        kani::assume(n_bits >= 1 && n_bits <= MAX_LEN);
-
-        let mut seq: [[i64; 2]; MAX_LEN] = [[0, 0]; MAX_LEN];
+        let len: usize = kani::any();
+        kani::assume(len <= MAX_LEN);
+        let mut seq = [[0i64; 2]; MAX_LEN];
         let mut i = 0;
         while i < MAX_LEN {
-            if i < n_bits {
-                let bit: u8 = kani::any();
-                kani::assume(bit <= 1);
-                if bit == 0 { seq[i] = [1, 0]; } else { seq[i] = [0, 1]; }
-            }
+            let (x0, x1) = any_symbol();
+            seq[i] = [x0, x1];
             i += 1;
         }
-
-        let c11 = contains_11(&seq, n_bits);
-        let nc1 = no_consecutive_1(&seq, n_bits);
-
-        // They must always sum to exactly 1
-        assert_eq!(c11 + nc1, 1, "Not complements!");
+        assert_eq!(c::decompiled(&seq, len) + n::decompiled(&seq, len), 1, "Not complements!");
     }
 
-    /// Prove: both circuits share identical hidden state evolution.
-    /// (Structural property — the DFA is literally the same, just accept/reject swapped.)
+    /// UNBOUNDED lemma 1: identical transition functions.
     #[kani::proof]
-    #[kani::unwind(6)]
-    fn verify_shared_dynamics() {
-        let n_bits: usize = kani::any();
-        kani::assume(n_bits >= 1 && n_bits <= MAX_LEN);
+    fn step_functions_identical() {
+        let h: i64 = kani::any();
+        kani::assume(-BOUND <= h && h <= BOUND);
+        let (x0, x1) = any_symbol();
+        assert_eq!(c::step([h], x0, x1), n::step([h], x0, x1));
+    }
 
-        let mut seq: [[i64; 2]; MAX_LEN] = [[0, 0]; MAX_LEN];
-        let mut i = 0;
-        while i < MAX_LEN {
-            if i < n_bits {
-                let bit: u8 = kani::any();
-                kani::assume(bit <= 1);
-                if bit == 0 { seq[i] = [1, 0]; } else { seq[i] = [0, 1]; }
-            }
-            i += 1;
-        }
+    /// UNBOUNDED lemma 2: complementary outputs at every hidden value.
+    #[kani::proof]
+    fn outputs_complementary() {
+        let h: i64 = kani::any();
+        kani::assume(-BOUND <= h && h <= BOUND);
+        assert_eq!(c::output([h]) + n::output([h]), 1);
+    }
 
-        // Run both circuits, tracking h1
-        let mut h1_a: i64 = 0;
-        let mut h1_b: i64 = 0;
-        let mut j = 0;
-        while j < MAX_LEN {
-            let x0 = seq[j][0];
-            let x1 = seq[j][1];
-            h1_a = (2 * h1_a - x0 + 2 * x1 - 1).max(0);
-            h1_b = (2 * h1_b - x0 + 2 * x1 - 1).max(0);
-            // Hidden states must be identical at every step
-            assert_eq!(h1_a, h1_b, "Hidden states diverged!");
-            j += 1;
-        }
+    /// Same two lemmas for ARBITRARY (not just valid) integer inputs in a safe range: the
+    /// complement property does not depend on the input encoding.
+    #[kani::proof]
+    fn step_functions_identical_any_input() {
+        let h: i64 = kani::any();
+        let x0: i64 = kani::any();
+        let x1: i64 = kani::any();
+        kani::assume(-(1i64 << 40) <= h && h <= (1i64 << 40));
+        kani::assume(-(1i64 << 40) <= x0 && x0 <= (1i64 << 40));
+        kani::assume(-(1i64 << 40) <= x1 && x1 <= (1i64 << 40));
+        assert_eq!(c::step([h], x0, x1), n::step([h], x0, x1));
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_seq(bits: &[u8]) -> Vec<[i64; 2]> {
-        let mut seq: Vec<[i64; 2]> = bits.iter().map(|&b| {
-            if b == 0 { [1, 0] } else { [0, 1] }
-        }).collect();
-        while seq.len() < 5 { seq.push([0, 0]); }
-        seq
-    }
+    use crate::common::SYMBOLS;
 
     #[test]
-    fn test_complement() {
-        let cases: Vec<Vec<u8>> = vec![
-            vec![0], vec![1], vec![0, 0], vec![0, 1], vec![1, 0], vec![1, 1],
-            vec![0, 1, 1], vec![1, 0, 1], vec![1, 1, 0], vec![1, 1, 1],
-            vec![0, 0, 0, 0], vec![1, 0, 1, 0, 1],
-        ];
-        for bits in &cases {
-            let seq = make_seq(bits);
-            let c = contains_11(&seq, 5);
-            let n = no_consecutive_1(&seq, 5);
-            assert_eq!(c + n, 1, "Not complements for {:?}: c11={} nc1={}", bits, c, n);
+    fn complement_exhaustive_up_to_len_9() {
+        let mut frontier: Vec<Vec<(i64, i64)>> = vec![vec![]];
+        for _ in 0..=9 {
+            let mut next = vec![];
+            for seq in &frontier {
+                let arr: Vec<[i64; 2]> = seq.iter().map(|s| [s.0, s.1]).collect();
+                assert_eq!(c::decompiled(&arr, arr.len()) + n::decompiled(&arr, arr.len()), 1);
+                for &sym in &SYMBOLS {
+                    let mut s = seq.clone();
+                    s.push(sym);
+                    next.push(s);
+                }
+            }
+            frontier = next;
         }
     }
 }

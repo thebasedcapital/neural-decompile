@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Auto-decompile neural network weights into readable code"
 
+[lib]
+name = "neural_decompile"
+path = "src/lib.rs"
+
 [[bin]]
 name = "nd"
 path = "src/main.rs"

@@ -24,20 +24,11 @@ pub enum GgmlType {
     Q5K = 13,
     Q6K = 14,
     Q8K = 15,
-    IQ2XXS = 16,
-    IQ2XS = 17,
-    IQ3XXS = 18,
-    IQ1S = 19,
-    IQ4NL = 20,
-    IQ3S = 21,
-    IQ2S = 22,
-    IQ4XS = 23,
     I8 = 24,
     I16 = 25,
     I32 = 26,
     I64 = 27,
     F64 = 28,
-    IQ1M = 29,
     BF16 = 30,
 }
 
@@ -91,7 +82,6 @@ impl GgmlType {
             Self::I64 => "I64",
             Self::F64 => "F64",
             Self::BF16 => "BF16",
-            _ => "unknown",
         }
     }
 
@@ -144,7 +134,6 @@ impl GgmlType {
             Self::Q5K => 2 + 2 + 12 + 256 / 2 + 32,   // 176 bytes
             Self::Q6K => 256 / 2 + 256 / 4 + 256 / 16 + 2, // 210 bytes
             Self::Q8K => 4 + 256 + 16 * 2,             // 292 bytes (f32 scale + 256 int8 + 16 f16 sums)
-            _ => 0,
         }
     }
 }
@@ -217,7 +206,7 @@ impl TensorInfo {
         } else {
             let bs = self.dtype.block_size();
             let bb = self.dtype.block_bytes();
-            let n_blocks = (n + bs - 1) / bs;
+            let n_blocks = n.div_ceil(bs);
             n_blocks * bb
         }
     }
@@ -370,7 +359,7 @@ impl GgufFile {
         }
 
         let version = cur.read_u32()?;
-        if version < 2 || version > 3 {
+        if !(2..=3).contains(&version) {
             bail!("Unsupported GGUF version: {} (supported: 2, 3)", version);
         }
 
@@ -413,7 +402,7 @@ impl GgufFile {
             Some(MetaValue::Uint64(a)) => *a as usize,
             _ => 32,
         };
-        let tensor_data_offset = (cur.pos + alignment - 1) / alignment * alignment;
+        let tensor_data_offset = cur.pos.div_ceil(alignment) * alignment;
 
         Ok(GgufFile {
             mmap,
@@ -450,31 +439,21 @@ impl GgufFile {
 
         match info.dtype {
             GgmlType::F32 => {
-                let mut out = vec![0.0f32; n];
-                for i in 0..n {
-                    let off = i * 4;
-                    out[i] = f32::from_le_bytes([
-                        bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3],
-                    ]);
-                }
+                let out: Vec<f32> = bytes[..n * 4].as_chunks::<4>().0.iter()
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect();
                 Ok(out)
             }
             GgmlType::F16 => {
-                let mut out = vec![0.0f32; n];
-                for i in 0..n {
-                    let off = i * 2;
-                    let bits = u16::from_le_bytes([bytes[off], bytes[off + 1]]);
-                    out[i] = f16_to_f32(bits);
-                }
+                let out: Vec<f32> = bytes[..n * 2].as_chunks::<2>().0.iter()
+                    .map(|c| f16_to_f32(u16::from_le_bytes([c[0], c[1]])))
+                    .collect();
                 Ok(out)
             }
             GgmlType::BF16 => {
-                let mut out = vec![0.0f32; n];
-                for i in 0..n {
-                    let off = i * 2;
-                    let bits = u16::from_le_bytes([bytes[off], bytes[off + 1]]);
-                    out[i] = bf16_to_f32(bits);
-                }
+                let out: Vec<f32> = bytes[..n * 2].as_chunks::<2>().0.iter()
+                    .map(|c| bf16_to_f32(u16::from_le_bytes([c[0], c[1]])))
+                    .collect();
                 Ok(out)
             }
             GgmlType::Q8_0 => {
@@ -549,7 +528,7 @@ impl GgufFile {
         let bytes = self.tensor_bytes(info)?;
         let n = info.n_elements() as usize;
         let block_bytes = 18usize; // 2 (f16 scale) + 16 (nibble bytes)
-        let n_blocks = (n + 31) / 32;
+        let n_blocks = n.div_ceil(32);
         let mut result = Vec::with_capacity(n_blocks);
 
         for bi in 0..n_blocks {
@@ -589,7 +568,7 @@ fn f16_to_f32(h: u16) -> f32 {
                 e += 1;
             }
             m &= 0x3FF;
-            let f32_exp = (127 - 15 - e + 1) as u32;
+            let f32_exp = 127 - 15 - e + 1;
             f32::from_bits((sign << 31) | (f32_exp << 23) | (m << 13))
         }
     } else if exp == 31 {
@@ -611,7 +590,7 @@ fn bf16_to_f32(b: u16) -> f32 {
 fn dequant_q8_0(bytes: &[u8], n: usize) -> Result<Vec<f32>> {
     let block_size = 32;
     let block_bytes = 2 + 32; // f16 scale + 32 int8s
-    let n_blocks = (n + block_size - 1) / block_size;
+    let n_blocks = n.div_ceil(block_size);
     let mut out = vec![0.0f32; n];
 
     for bi in 0..n_blocks {
@@ -637,7 +616,7 @@ fn dequant_q8_0(bytes: &[u8], n: usize) -> Result<Vec<f32>> {
 fn dequant_q4_0(bytes: &[u8], n: usize) -> Result<Vec<f32>> {
     let block_size = 32;
     let block_bytes = 2 + 16; // f16 scale + 16 bytes (2 nibbles each)
-    let n_blocks = (n + block_size - 1) / block_size;
+    let n_blocks = n.div_ceil(block_size);
     let mut out = vec![0.0f32; n];
 
     for bi in 0..n_blocks {

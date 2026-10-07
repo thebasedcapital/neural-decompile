@@ -1,15 +1,11 @@
 use crate::quantize::{QuantizedRnn, QuantizedTransformer, QuantizedLayer};
 
 fn fmt_val(v: f64) -> String {
-    if (v - v.round()).abs() < 0.01 {
-        format!("{}", v.round() as i64)
-    } else {
-        format!("{:.2}", v)
-    }
+    v.to_string()
 }
 
 fn is_significant(v: f64) -> bool {
-    v.abs() > 0.005
+    v != 0.0
 }
 
 pub fn emit_python(q: &QuantizedRnn, name: &str) -> String {
@@ -22,18 +18,18 @@ pub fn emit_python(q: &QuantizedRnn, name: &str) -> String {
         .chain(q.w_y.iter().copied())
         .chain(q.b_y.iter().copied())
         .collect();
-    let pct_int = all.iter().filter(|&&v| (v - v.round()).abs() < 0.01).count() as f64
+    let pct_int = all.iter().filter(|&&v| v.fract() == 0.0).count() as f64
         / all.len() as f64;
 
-    lines.push(format!("# Auto-decompiled by neural-decompile"));
+    lines.push("# Auto-decompiled by neural-decompile".to_string());
     lines.push(format!("# {:.0}% of weights are exact integers", pct_int * 100.0));
     lines.push(format!("# Hidden dim: {}, Input dim: {}, Output dim: {}",
                        q.hidden_dim, q.input_dim, q.output_dim));
     lines.push(String::new());
     lines.push(format!("def {}(input_sequence):", name));
-    lines.push(format!("    \"\"\"RNN decompiled to finite state machine.\"\"\""));
+    lines.push("    \"\"\"Execute the quantized ReLU recurrent network.\"\"\"".to_string());
     lines.push(format!("    h = [0.0] * {}", q.hidden_dim));
-    lines.push(format!("    for x in input_sequence:"));
+    lines.push("    for x in input_sequence:".to_string());
 
     // Transition function: h_i = ReLU(sum(W_hh[i,j]*h[j]) + sum(W_hx[i,j]*x[j]) + b_h[i])
     for i in 0..q.hidden_dim {
@@ -65,7 +61,7 @@ pub fn emit_python(q: &QuantizedRnn, name: &str) -> String {
         (0..q.hidden_dim).map(|i| format!("h{}", i)).collect::<Vec<_>>().join(", ")));
 
     // Output layer
-    lines.push(format!("    logits = []"));
+    lines.push("    logits = []".to_string());
     for i in 0..q.output_dim {
         let mut terms = Vec::new();
         for j in 0..q.hidden_dim {
@@ -78,12 +74,12 @@ pub fn emit_python(q: &QuantizedRnn, name: &str) -> String {
             terms.push(fmt_val(q.b_y[i]));
         }
         if terms.is_empty() {
-            lines.push(format!("    logits.append(0)"));
+            lines.push("    logits.append(0)".to_string());
         } else {
             lines.push(format!("    logits.append({})", terms.join(" + ")));
         }
     }
-    lines.push(format!("    return logits.index(max(logits))"));
+    lines.push("    return logits.index(max(logits))".to_string());
 
     lines.join("\n") + "\n"
 }
@@ -91,54 +87,58 @@ pub fn emit_python(q: &QuantizedRnn, name: &str) -> String {
 pub fn emit_rust(q: &QuantizedRnn, name: &str) -> String {
     let mut lines = Vec::new();
 
-    lines.push(format!("/// Auto-decompiled by neural-decompile"));
+    lines.push("/// Auto-decompiled by neural-decompile".to_string());
     lines.push(format!("fn {}(input_sequence: &[Vec<f64>]) -> usize {{", name));
     lines.push(format!("    let mut h = vec![0.0_f64; {}];", q.hidden_dim));
-    lines.push(format!("    for x in input_sequence {{"));
+    lines.push("    for x in input_sequence {".to_string());
 
     for i in 0..q.hidden_dim {
         let mut terms = Vec::new();
         for j in 0..q.hidden_dim {
             let v = q.w_hh[[i, j]];
             if is_significant(v) {
-                terms.push(format!("{:.1} * h[{}]", v, j));
+                terms.push(format!("{:?} * h[{}]", v, j));
             }
         }
         for j in 0..q.input_dim {
             let v = q.w_hx[[i, j]];
             if is_significant(v) {
-                terms.push(format!("{:.1} * x[{}]", v, j));
+                terms.push(format!("{:?} * x[{}]", v, j));
             }
         }
         if is_significant(q.b_h[i]) {
-            terms.push(format!("{:.1}", q.b_h[i]));
+            terms.push(format!("{:?}", q.b_h[i]));
         }
-        let expr = if terms.is_empty() { "0.0".to_string() } else { terms.join(" + ") };
-        lines.push(format!("        let h{} = ({}).max(0.0);", i, expr));
+        let expr = if terms.is_empty() { "0.0_f64".to_string() } else { terms.join(" + ") };
+        lines.push(format!("        let h{}: f64 = ({} as f64).max(0.0);", i, expr));
     }
 
     lines.push(format!("        h = vec![{}];",
         (0..q.hidden_dim).map(|i| format!("h{}", i)).collect::<Vec<_>>().join(", ")));
-    lines.push(format!("    }}"));
+    lines.push("    }".to_string());
 
-    lines.push(format!("    let logits: Vec<f64> = vec!["));
+    lines.push("    let logits: Vec<f64> = vec![".to_string());
     for i in 0..q.output_dim {
         let mut terms = Vec::new();
         for j in 0..q.hidden_dim {
             let v = q.w_y[[i, j]];
             if is_significant(v) {
-                terms.push(format!("{:.1} * h[{}]", v, j));
+                terms.push(format!("{:?} * h[{}]", v, j));
             }
         }
         if is_significant(q.b_y[i]) {
-            terms.push(format!("{:.1}", q.b_y[i]));
+            terms.push(format!("{:?}", q.b_y[i]));
         }
         let expr = if terms.is_empty() { "0.0".to_string() } else { terms.join(" + ") };
         lines.push(format!("        {},", expr));
     }
-    lines.push(format!("    ];"));
-    lines.push(format!("    logits.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap().0"));
-    lines.push(format!("}}"));
+    lines.push("    ];".to_string());
+    lines.push("    let mut best = 0usize;".to_string());
+    lines.push("    for (i, &v) in logits.iter().enumerate() {".to_string());
+    lines.push("        if v > logits[best] { best = i; }".to_string());
+    lines.push("    }".to_string());
+    lines.push("    best".to_string());
+    lines.push("}".to_string());
 
     lines.join("\n") + "\n"
 }
@@ -151,7 +151,7 @@ fn all_weights_integer(q: &QuantizedRnn) -> bool {
         .chain(q.w_y.iter().copied())
         .chain(q.b_y.iter().copied())
         .collect();
-    all.iter().all(|&v| !is_significant(v) || (v - v.round()).abs() < 0.01)
+    all.iter().all(|&v| v.fract() == 0.0 && v >= i64::MIN as f64 && v < -(i64::MIN as f64))
 }
 
 /// Format an f64 as integer literal for Kani output
@@ -166,27 +166,27 @@ pub fn emit_rust_kani(q: &QuantizedRnn, name: &str) -> String {
     let ty = if use_int { "i64" } else { "f64" };
     let zero = if use_int { "0" } else { "0.0" };
     let fmt = |v: f64| -> String {
-        if use_int { fmt_int(v) } else { format!("{:.2}", v) }
+        if use_int { fmt_int(v) } else { format!("{:?}", v) }
     };
 
     // Detect dead neurons (constant zero output regardless of input)
     let dead: Vec<bool> = (0..q.hidden_dim).map(|i| {
-        let all_zero = (0..q.hidden_dim).all(|j| !is_significant(q.w_hh[[i, j]]))
+        
+        (0..q.hidden_dim).all(|j| !is_significant(q.w_hh[[i, j]]))
             && (0..q.input_dim).all(|j| !is_significant(q.w_hx[[i, j]]))
-            && !is_significant(q.b_h[i]);
-        all_zero
+            && !is_significant(q.b_h[i])
     }).collect();
     let live_neurons: Vec<usize> = (0..q.hidden_dim).filter(|&i| !dead[i]).collect();
     let n_live = live_neurons.len();
 
-    lines.push(format!("/// Auto-decompiled by neural-decompile (Kani-friendly)"));
+    lines.push("/// Auto-decompiled by neural-decompile (Kani-friendly)".to_string());
     lines.push(format!("/// {} arithmetic, {} live neurons (of {})",
         if use_int { "Integer" } else { "Float" }, n_live, q.hidden_dim));
     lines.push(format!("fn {}(seq: &[[{}; {}]], len: usize) -> usize {{",
         name, ty, q.input_dim));
     lines.push(format!("    let mut h: [{}; {}] = [{}; {}];", ty, n_live, zero, n_live));
-    lines.push(format!("    let mut i = 0;"));
-    lines.push(format!("    while i < len {{"));
+    lines.push("    let mut i = 0;".to_string());
+    lines.push("    while i < len {".to_string());
 
     // Input extraction
     for j in 0..q.input_dim {
@@ -222,8 +222,8 @@ pub fn emit_rust_kani(q: &QuantizedRnn, name: &str) -> String {
     // Update h array
     lines.push(format!("        h = [{}];",
         (0..n_live).map(|i| format!("h{}", i)).collect::<Vec<_>>().join(", ")));
-    lines.push(format!("        i += 1;"));
-    lines.push(format!("    }}"));
+    lines.push("        i += 1;".to_string());
+    lines.push("    }".to_string());
 
     // Output layer with simplified argmax
     if q.output_dim == 2 {
@@ -247,7 +247,7 @@ pub fn emit_rust_kani(q: &QuantizedRnn, name: &str) -> String {
         let l1 = if terms1.is_empty() { zero.to_string() } else { terms1.join(" + ") };
         lines.push(format!("    let l0 = {};", l0));
         lines.push(format!("    let l1 = {};", l1));
-        lines.push(format!("    if l1 > l0 {{ 1 }} else {{ 0 }}"));
+        lines.push("    if l1 > l0 { 1 } else { 0 }".to_string());
     } else {
         // N-class: emit logit array and argmax
         lines.push(format!("    let logits: [{}; {}] = [", ty, q.output_dim));
@@ -263,59 +263,17 @@ pub fn emit_rust_kani(q: &QuantizedRnn, name: &str) -> String {
             let expr = if terms.is_empty() { zero.to_string() } else { terms.join(" + ") };
             lines.push(format!("        {},", expr));
         }
-        lines.push(format!("    ];"));
-        lines.push(format!("    let mut best = 0;"));
-        lines.push(format!("    let mut k = 1;"));
+        lines.push("    ];".to_string());
+        lines.push("    let mut best = 0;".to_string());
+        lines.push("    let mut k = 1;".to_string());
         lines.push(format!("    while k < {} {{", q.output_dim));
-        lines.push(format!("        if logits[k] > logits[best] {{ best = k; }}"));
-        lines.push(format!("        k += 1;"));
-        lines.push(format!("    }}"));
-        lines.push(format!("    best"));
+        lines.push("        if logits[k] > logits[best] { best = k; }".to_string());
+        lines.push("        k += 1;".to_string());
+        lines.push("    }".to_string());
+        lines.push("    best".to_string());
     }
-    lines.push(format!("}}"));
+    lines.push("}".to_string());
 
-    // Add Kani proof harness template
-    lines.push(String::new());
-    lines.push(format!("#[cfg(kani)]"));
-    lines.push(format!("#[kani::proof]"));
-    lines.push(format!("#[kani::unwind({})]  // TODO: set to max_seq_len + 1",
-        n_live + 2));
-    lines.push(format!("fn verify_{}() {{", name));
-    lines.push(format!("    const MAX_LEN: usize = 6; // TODO: set to actual max sequence length"));
-    lines.push(format!("    let len: usize = kani::any();"));
-    lines.push(format!("    kani::assume(len >= 1 && len <= MAX_LEN);"));
-    lines.push(String::new());
-    lines.push(format!("    let mut seq: [[{}; {}]; MAX_LEN] = [[{}; {}]; MAX_LEN];",
-        ty, q.input_dim, zero, q.input_dim));
-    lines.push(format!("    let mut i = 0;"));
-    lines.push(format!("    while i < MAX_LEN {{"));
-    lines.push(format!("        if i < len {{"));
-    if q.input_dim == 2 {
-        lines.push(format!("            let bit: u8 = kani::any();"));
-        lines.push(format!("            kani::assume(bit <= 1);"));
-        if use_int {
-            lines.push(format!("            if bit == 0 {{ seq[i] = [1, 0]; }} else {{ seq[i] = [0, 1]; }}"));
-        } else {
-            lines.push(format!("            if bit == 0 {{ seq[i] = [1.0, 0.0]; }} else {{ seq[i] = [0.0, 1.0]; }}"));
-        }
-    } else {
-        lines.push(format!("            // TODO: generate one-hot encoding for input_dim={}", q.input_dim));
-        lines.push(format!("            let choice: usize = kani::any();"));
-        lines.push(format!("            kani::assume(choice < {});", q.input_dim));
-        if use_int {
-            lines.push(format!("            seq[i][choice] = 1;"));
-        } else {
-            lines.push(format!("            seq[i][choice] = 1.0;"));
-        }
-    }
-    lines.push(format!("        }}"));
-    lines.push(format!("        i += 1;"));
-    lines.push(format!("    }}"));
-    lines.push(String::new());
-    lines.push(format!("    let result = {}(&seq, len);", name));
-    lines.push(format!("    let expected = spec_{}(&seq, len); // TODO: implement spec", name));
-    lines.push(format!("    assert_eq!(result, expected);"));
-    lines.push(format!("}}"));
 
     lines.join("\n") + "\n"
 }
@@ -384,19 +342,19 @@ pub fn emit_transformer_python(t: &QuantizedTransformer, name: &str) -> String {
     lines.push(format!("def {}(tokens):", name));
     lines.push(format!("    \"\"\"Transformer decompilation: {} layers, {} heads\"\"\"", t.n_layers,
         t.layers.first().map(|l| l.n_heads).unwrap_or(1)));
-    lines.push(format!("    seq_len = len(tokens)"));
+    lines.push("    seq_len = len(tokens)".to_string());
     lines.push(format!("    assert seq_len <= {}", t.max_seq_len));
 
     // Embeddings
-    lines.push(format!("    # Token + position embeddings"));
-    lines.push(format!("    hidden = []"));
-    lines.push(format!("    for i, tok in enumerate(tokens):"));
+    lines.push("    # Token + position embeddings".to_string());
+    lines.push("    hidden = []".to_string());
+    lines.push("    for i, tok in enumerate(tokens):".to_string());
     lines.push(format!("        emb = token_emb_{}[tok][:]  # copy", name));
     if t.pos_emb.is_some() {
         lines.push(format!("        for j in range({}):", t.d_model));
         lines.push(format!("            emb[j] += pos_emb_{}[i][j]", name));
     }
-    lines.push(format!("        hidden.append(emb)"));
+    lines.push("        hidden.append(emb)".to_string());
 
     // Layers
     for (li, layer) in t.layers.iter().enumerate() {
@@ -408,32 +366,32 @@ pub fn emit_transformer_python(t: &QuantizedTransformer, name: &str) -> String {
     // Final layer norm
     if t.ln_final_gamma.is_some() {
         lines.push(String::new());
-        lines.push(format!("    # Final layer norm"));
-        lines.push(format!("    for i in range(seq_len):"));
+        lines.push("    # Final layer norm".to_string());
+        lines.push("    for i in range(seq_len):".to_string());
         lines.push(format!("        hidden[i] = layer_norm(hidden[i], ln_final_gamma_{}, ln_final_beta_{})", name, name));
     }
 
     // Output projection
     lines.push(String::new());
-    lines.push(format!("    # Output projection"));
-    lines.push(format!("    logits = []"));
-    lines.push(format!("    for h in hidden:"));
-    lines.push(format!("        out = []"));
+    lines.push("    # Output projection".to_string());
+    lines.push("    logits = []".to_string());
+    lines.push("    for h in hidden:".to_string());
+    lines.push("        out = []".to_string());
     lines.push(format!("        for j in range({}):", t.vocab_size));
-    lines.push(format!("            s = 0.0"));
+    lines.push("            s = 0.0".to_string());
     lines.push(format!("            for i in range({}):", t.d_model));
     lines.push(format!("                s += h[i] * w_out_{}[i * {} + j]", name, t.vocab_size));
     if t.b_out.is_some() {
         lines.push(format!("            s += b_out_{}[j]", name));
     }
-    lines.push(format!("            out.append(s)"));
-    lines.push(format!("        logits.append(out)"));
+    lines.push("            out.append(s)".to_string());
+    lines.push("        logits.append(out)".to_string());
 
-    lines.push(format!("    return logits"));
+    lines.push("    return logits".to_string());
 
     // Weight definitions
     lines.push(String::new());
-    lines.push(format!("# === Weights ==="));
+    lines.push("# === Weights ===".to_string());
     // Use precise formatting for weights, standard for layer norms (mostly 0/1)
     lines.push(format!("token_emb_{} = {}", name, vec2d_python_precise(&t.token_emb)));
     if let Some(ref pos) = t.pos_emb {
@@ -469,7 +427,7 @@ fn emit_layer_python(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize,
     let head_dim = d_model / layer.n_heads;
 
     // Pre-norm
-    lines.push(format!("    # Pre-norm attention"));
+    lines.push("    # Pre-norm attention".to_string());
     lines.push(format!("    x = [layer_norm(h, ln1_gamma_{}[:], ln1_beta_{}[:]) for h in hidden]", li, li));
 
     // Multi-head attention
@@ -478,7 +436,7 @@ fn emit_layer_python(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize,
     lines.push(format!("    q = [[0.0] * {} for _ in range(seq_len)]", d_model));
     lines.push(format!("    k = [[0.0] * {} for _ in range(seq_len)]", d_model));
     lines.push(format!("    v = [[0.0] * {} for _ in range(seq_len)]", d_model));
-    lines.push(format!("    for i in range(seq_len):"));
+    lines.push("    for i in range(seq_len):".to_string());
     lines.push(format!("        for j in range({}):", d_model));
     lines.push(format!("            for h_idx in range({}):", d_model));
     lines.push(format!("                q[i][j] += x[i][h_idx] * w_q_{}[h_idx * {} + j]", li, d_model));
@@ -489,63 +447,63 @@ fn emit_layer_python(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize,
     lines.push(format!("    attn_out = [[0.0] * {} for _ in range(seq_len)]", d_model));
     lines.push(format!("    for h_idx in range({}):", layer.n_heads));
     lines.push(format!("        h_off = h_idx * {}", head_dim));
-    lines.push(format!("        # Compute attention scores"));
-    lines.push(format!("        scores = [[0.0] * seq_len for _ in range(seq_len)]"));
-    lines.push(format!("        for i in range(seq_len):"));
-    lines.push(format!("            for j in range(seq_len):"));
+    lines.push("        # Compute attention scores".to_string());
+    lines.push("        scores = [[0.0] * seq_len for _ in range(seq_len)]".to_string());
+    lines.push("        for i in range(seq_len):".to_string());
+    lines.push("            for j in range(seq_len):".to_string());
     lines.push(format!("                for d in range({}):", head_dim));
-    lines.push(format!("                    scores[i][j] += q[i][h_off + d] * k[j][h_off + d]"));
+    lines.push("                    scores[i][j] += q[i][h_off + d] * k[j][h_off + d]".to_string());
     lines.push(format!("                scores[i][j] /= {}  # sqrt(head_dim)", (head_dim as f64).sqrt()));
-    lines.push(format!("        # Softmax"));
-    lines.push(format!("        attn_weights = [softmax(row) for row in scores]"));
-    lines.push(format!("        # Apply attention to values"));
-    lines.push(format!("        for i in range(seq_len):"));
+    lines.push("        # Softmax".to_string());
+    lines.push("        attn_weights = [softmax(row) for row in scores]".to_string());
+    lines.push("        # Apply attention to values".to_string());
+    lines.push("        for i in range(seq_len):".to_string());
     lines.push(format!("            for d in range({}):", head_dim));
-    lines.push(format!("                for j in range(seq_len):"));
-    lines.push(format!("                    attn_out[i][h_off + d] += attn_weights[i][j] * v[j][h_off + d]"));
+    lines.push("                for j in range(seq_len):".to_string());
+    lines.push("                    attn_out[i][h_off + d] += attn_weights[i][j] * v[j][h_off + d]".to_string());
 
     // Output projection
-    lines.push(format!("    # Output projection"));
+    lines.push("    # Output projection".to_string());
     lines.push(format!("    attn_proj = [[0.0] * {} for _ in range(seq_len)]", d_model));
-    lines.push(format!("    for i in range(seq_len):"));
+    lines.push("    for i in range(seq_len):".to_string());
     lines.push(format!("        for j in range({}):", d_model));
     lines.push(format!("            for h_idx in range({}):", d_model));
     lines.push(format!("                attn_proj[i][j] += attn_out[i][h_idx] * w_o_{}[h_idx * {} + j]", li, d_model));
 
     // Residual
-    lines.push(format!("    # Residual"));
-    lines.push(format!("    for i in range(seq_len):"));
+    lines.push("    # Residual".to_string());
+    lines.push("    for i in range(seq_len):".to_string());
     lines.push(format!("        for j in range({}):", d_model));
-    lines.push(format!("            hidden[i][j] += attn_proj[i][j]"));
+    lines.push("            hidden[i][j] += attn_proj[i][j]".to_string());
 
     // FFN
-    lines.push(format!("    # Pre-norm FFN"));
+    lines.push("    # Pre-norm FFN".to_string());
     lines.push(format!("    x = [layer_norm(h, ln2_gamma_{}[:], ln2_beta_{}[:]) for h in hidden]", li, li));
-    lines.push(format!("    ffn_out = []"));
-    lines.push(format!("    for h in x:"));
-    lines.push(format!("        # FFN layer 1"));
+    lines.push("    ffn_out = []".to_string());
+    lines.push("    for h in x:".to_string());
+    lines.push("        # FFN layer 1".to_string());
     lines.push(format!("        hidden_ff = [0.0] * {}", layer.d_ff));
     lines.push(format!("        for j in range({}):", layer.d_ff));
     lines.push(format!("            for i in range({}):", d_model));
     lines.push(format!("                hidden_ff[j] += h[i] * w_ff_in_{}[i * {} + j]", li, layer.d_ff));
-    lines.push(format!("        # Activation"));
+    lines.push("        # Activation".to_string());
     if layer.gelu {
-        lines.push(format!("        hidden_ff = [gelu(v) for v in hidden_ff]"));
+        lines.push("        hidden_ff = [gelu(v) for v in hidden_ff]".to_string());
     } else {
-        lines.push(format!("        hidden_ff = [max(0, v) for v in hidden_ff]"));
+        lines.push("        hidden_ff = [max(0, v) for v in hidden_ff]".to_string());
     }
-    lines.push(format!("        # FFN layer 2"));
+    lines.push("        # FFN layer 2".to_string());
     lines.push(format!("        out = [0.0] * {}", d_model));
     lines.push(format!("        for j in range({}):", d_model));
     lines.push(format!("            for i in range({}):", layer.d_ff));
     lines.push(format!("                out[j] += hidden_ff[i] * w_ff_out_{}[i * {} + j]", li, d_model));
-    lines.push(format!("        ffn_out.append(out)"));
+    lines.push("        ffn_out.append(out)".to_string());
 
     // Residual
-    lines.push(format!("    # Residual"));
-    lines.push(format!("    for i in range(seq_len):"));
+    lines.push("    # Residual".to_string());
+    lines.push("    for i in range(seq_len):".to_string());
     lines.push(format!("        for j in range({}):", d_model));
-    lines.push(format!("            hidden[i][j] += ffn_out[i][j]"));
+    lines.push("            hidden[i][j] += ffn_out[i][j]".to_string());
 }
 
 fn vec_python(v: &[f64]) -> String {
@@ -553,24 +511,9 @@ fn vec_python(v: &[f64]) -> String {
     format!("[{}]", vals.join(", "))
 }
 
-fn vec2d_python(v: &[Vec<f64>]) -> String {
-    let rows: Vec<String> = v.iter().map(|row| vec_python(row)).collect();
-    format!("[{}]", rows.join(", "))
-}
-
-/// Format float with full precision for transformer weights
+/// Shortest round-tripping literal, including a decimal point for Rust floats.
 fn fmt_float_precise(v: f64) -> String {
-    if v == 0.0 {
-        "0.0".to_string()
-    } else if v.abs() < 0.0001 {
-        format!("{:.10}", v)
-    } else if v.abs() < 0.001 {
-        format!("{:.8}", v)
-    } else if v.abs() < 0.01 {
-        format!("{:.6}", v)
-    } else {
-        format!("{:.6}", v)
-    }
+    format!("{:?}", v)
 }
 
 fn vec_python_precise(v: &[f64]) -> String {
@@ -614,18 +557,18 @@ pub fn emit_transformer_rust(t: &QuantizedTransformer, name: &str) -> String {
 
     // Main function
     lines.push(format!("pub fn {}(tokens: &[usize]) -> Vec<Vec<f64>> {{", name));
-    lines.push(format!("    let seq_len = tokens.len();"));
+    lines.push("    let seq_len = tokens.len();".to_string());
     lines.push(format!("    assert!(seq_len <= {});", t.max_seq_len));
 
     // Embeddings
-    lines.push(format!("    // Token + position embeddings"));
-    lines.push(format!("    let mut hidden: Vec<Vec<f64>> = tokens.iter().enumerate().map(|(i, &tok)| {{"));
-    lines.push(format!("        let mut emb = TOKEN_EMB[tok].clone();"));
+    lines.push("    // Token + position embeddings".to_string());
+    lines.push("    let mut hidden: Vec<Vec<f64>> = tokens.iter().enumerate().map(|(i, &tok)| {".to_string());
+    lines.push("        let mut emb = TOKEN_EMB[tok].clone();".to_string());
     if t.pos_emb.is_some() {
         lines.push(format!("        for j in 0..{} {{ emb[j] += POS_EMB[i][j]; }}", t.d_model));
     }
-    lines.push(format!("        emb").to_string());
-    lines.push(format!("    }}).collect();"));
+    lines.push("        emb".to_string());
+    lines.push("    }).collect();".to_string());
 
     // Layers
     for (li, layer) in t.layers.iter().enumerate() {
@@ -637,30 +580,30 @@ pub fn emit_transformer_rust(t: &QuantizedTransformer, name: &str) -> String {
     // Final layer norm
     if t.ln_final_gamma.is_some() {
         lines.push(String::new());
-        lines.push(format!("    // Final layer norm"));
-        lines.push(format!("    for h in &mut hidden {{"));
-        lines.push(format!("        *h = layer_norm(h, &LN_FINAL_GAMMA, &LN_FINAL_BETA);"));
-        lines.push(format!("    }}"));
+        lines.push("    // Final layer norm".to_string());
+        lines.push("    for h in &mut hidden {".to_string());
+        lines.push("        *h = layer_norm(h, &LN_FINAL_GAMMA, &LN_FINAL_BETA);".to_string());
+        lines.push("    }".to_string());
     }
 
     // Output projection
     lines.push(String::new());
-    lines.push(format!("    // Output projection"));
-    lines.push(format!("    hidden.iter().map(|h| {{"));
+    lines.push("    // Output projection".to_string());
+    lines.push("    hidden.iter().map(|h| {".to_string());
     lines.push(format!("        (0..{}).map(|j| {{", t.vocab_size));
-    lines.push(format!("            let mut s = 0.0;"));
+    lines.push("            let mut s = 0.0;".to_string());
     lines.push(format!("            for i in 0..{} {{ s += h[i] * W_OUT[i * {} + j]; }}", t.d_model, t.vocab_size));
     if t.b_out.is_some() {
-        lines.push(format!("            s += B_OUT[j];"));
+        lines.push("            s += B_OUT[j];".to_string());
     }
-    lines.push(format!("            s").to_string());
-    lines.push(format!("        }}).collect()").to_string());
-    lines.push(format!("    }}).collect()").to_string());
-    lines.push(format!("}}"));
+    lines.push("            s".to_string());
+    lines.push("        }).collect()".to_string());
+    lines.push("    }).collect()".to_string());
+    lines.push("}".to_string());
 
     // Weight constants
     lines.push(String::new());
-    lines.push(format!("// === Weights ==="));
+    lines.push("// === Weights ===".to_string());
     lines.push(format!("const TOKEN_EMB: &[&[f64]] = &{};", vec2d_rust(&t.token_emb)));
     if let Some(ref pos) = t.pos_emb {
         lines.push(format!("const POS_EMB: &[&[f64]] = &{};", vec2d_rust(pos)));
@@ -701,55 +644,55 @@ fn emit_layer_rust(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize, d
     // Multi-head attention
     lines.push(format!("    // Multi-head attention ({} heads, head_dim={})", layer.n_heads, head_dim));
     // Q, K, V projections
-    lines.push(format!("    let q: Vec<Vec<f64>> = x.iter().map(|row| {{"));
+    lines.push("    let q: Vec<Vec<f64>> = x.iter().map(|row| {".to_string());
     lines.push(format!("        (0..{}).map(|j| {{", d_model));
     lines.push(format!("            (0..{}).map(|i| row[i] * W_Q_{}[i * {} + j]).sum()", d_model, li, d_model));
-    lines.push(format!("        }}).collect()"));
-    lines.push(format!("    }}).collect();"));
-    lines.push(format!("    let k: Vec<Vec<f64>> = x.iter().map(|row| {{"));
+    lines.push("        }).collect()".to_string());
+    lines.push("    }).collect();".to_string());
+    lines.push("    let k: Vec<Vec<f64>> = x.iter().map(|row| {".to_string());
     lines.push(format!("        (0..{}).map(|j| {{", d_model));
     lines.push(format!("            (0..{}).map(|i| row[i] * W_K_{}[i * {} + j]).sum()", d_model, li, d_model));
-    lines.push(format!("        }}).collect()"));
-    lines.push(format!("    }}).collect();"));
-    lines.push(format!("    let v: Vec<Vec<f64>> = x.iter().map(|row| {{"));
+    lines.push("        }).collect()".to_string());
+    lines.push("    }).collect();".to_string());
+    lines.push("    let v: Vec<Vec<f64>> = x.iter().map(|row| {".to_string());
     lines.push(format!("        (0..{}).map(|j| {{", d_model));
     lines.push(format!("            (0..{}).map(|i| row[i] * W_V_{}[i * {} + j]).sum()", d_model, li, d_model));
-    lines.push(format!("        }}).collect()"));
-    lines.push(format!("    }}).collect();"));
+    lines.push("        }).collect()".to_string());
+    lines.push("    }).collect();".to_string());
 
     // Attention per head
     lines.push(format!("    let mut attn_out: Vec<Vec<f64>> = vec![vec![0.0; {}]; seq_len];", d_model));
     lines.push(format!("    for h_idx in 0..{} {{", layer.n_heads));
     lines.push(format!("        let h_off = h_idx * {};", head_dim));
-    lines.push(format!("        // Compute attention scores"));
-    lines.push(format!("        let mut scores = vec![vec![0.0; seq_len]; seq_len];"));
-    lines.push(format!("        for i in 0..seq_len {{"));
-    lines.push(format!("            for j in 0..seq_len {{"));
+    lines.push("        // Compute attention scores".to_string());
+    lines.push("        let mut scores = vec![vec![0.0; seq_len]; seq_len];".to_string());
+    lines.push("        for i in 0..seq_len {".to_string());
+    lines.push("            for j in 0..seq_len {".to_string());
     lines.push(format!("                for d in 0..{} {{", head_dim));
-    lines.push(format!("                    scores[i][j] += q[i][h_off + d] * k[j][h_off + d];"));
-    lines.push(format!("                }}"));
+    lines.push("                    scores[i][j] += q[i][h_off + d] * k[j][h_off + d];".to_string());
+    lines.push("                }".to_string());
     lines.push(format!("                scores[i][j] /= {}; // sqrt(head_dim)", (head_dim as f64).sqrt()));
-    lines.push(format!("            }}"));
-    lines.push(format!("        }}"));
-    lines.push(format!("        // Softmax"));
-    lines.push(format!("        let attn_weights: Vec<Vec<f64>> = scores.iter().map(|row| softmax(row)).collect();"));
-    lines.push(format!("        // Apply to values"));
-    lines.push(format!("        for i in 0..seq_len {{"));
+    lines.push("            }".to_string());
+    lines.push("        }".to_string());
+    lines.push("        // Softmax".to_string());
+    lines.push("        let attn_weights: Vec<Vec<f64>> = scores.iter().map(|row| softmax(row)).collect();".to_string());
+    lines.push("        // Apply to values".to_string());
+    lines.push("        for i in 0..seq_len {".to_string());
     lines.push(format!("            for d in 0..{} {{", head_dim));
-    lines.push(format!("                for j in 0..seq_len {{"));
-    lines.push(format!("                    attn_out[i][h_off + d] += attn_weights[i][j] * v[j][h_off + d];"));
-    lines.push(format!("                }}"));
-    lines.push(format!("            }}"));
-    lines.push(format!("        }}"));
-    lines.push(format!("    }}"));
+    lines.push("                for j in 0..seq_len {".to_string());
+    lines.push("                    attn_out[i][h_off + d] += attn_weights[i][j] * v[j][h_off + d];".to_string());
+    lines.push("                }".to_string());
+    lines.push("            }".to_string());
+    lines.push("        }".to_string());
+    lines.push("    }".to_string());
 
     // Output projection
-    lines.push(format!("    // Output projection"));
-    lines.push(format!("    let attn_proj: Vec<Vec<f64>> = attn_out.iter().map(|row| {{"));
+    lines.push("    // Output projection".to_string());
+    lines.push("    let attn_proj: Vec<Vec<f64>> = attn_out.iter().map(|row| {".to_string());
     lines.push(format!("        (0..{}).map(|j| {{", d_model));
     lines.push(format!("            (0..{}).map(|i| row[i] * W_O_{}[i * {} + j]).sum()", d_model, li, d_model));
-    lines.push(format!("        }}).collect()"));
-    lines.push(format!("    }}).collect();"));
+    lines.push("        }).collect()".to_string());
+    lines.push("    }).collect();".to_string());
 
     // Residual
     lines.push("    // Residual".to_string());
@@ -785,7 +728,7 @@ fn emit_layer_rust(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize, d
 }
 
 fn vec_rust(v: &[f64]) -> String {
-    let vals: Vec<String> = v.iter().map(|&x| fmt_val(x)).collect();
+    let vals: Vec<String> = v.iter().map(|&x| fmt_float_precise(x)).collect();
     format!("[{}]", vals.join(", "))
 }
 
@@ -798,7 +741,7 @@ fn vec2d_rust(v: &[Vec<f64>]) -> String {
 pub fn emit_transformer_table(t: &QuantizedTransformer) -> String {
     let mut lines = Vec::new();
 
-    lines.push(format!("=== Transformer Summary ==="));
+    lines.push("=== Transformer Summary ===".to_string());
     lines.push(format!("Layers: {}, d_model: {}, vocab_size: {}", t.n_layers, t.d_model, t.vocab_size));
     lines.push(format!("Max seq len: {}", t.max_seq_len));
     lines.push(String::new());
@@ -836,7 +779,6 @@ pub enum HeadPattern {
     CurrentToken,           // Clear self-attention
     PositionalShift(i32),   // Clear offset pattern (e.g., attends to pos+2)
     Uniform,                // Roughly equal attention everywhere
-    PositionalRange(usize, usize), // Attends within specific range
     ContentSensitive,       // Attention varies by token ID (detected via multi-token test)
     Mixed,                  // Multiple or unclear patterns
     Unknown,                // Could not determine pattern
@@ -850,7 +792,6 @@ impl std::fmt::Display for HeadPattern {
             HeadPattern::CurrentToken => write!(f, "self-token"),
             HeadPattern::PositionalShift(n) => write!(f, "pos-shift-{}", n),
             HeadPattern::Uniform => write!(f, "uniform"),
-            HeadPattern::PositionalRange(start, end) => write!(f, "pos-range-{}-{}", start, end),
             HeadPattern::ContentSensitive => write!(f, "content-sensitive"),
             HeadPattern::Mixed => write!(f, "mixed-pattern"),
             HeadPattern::Unknown => write!(f, "unknown"),
@@ -867,29 +808,21 @@ pub struct TransformerCircuit {
 
 /// What an FFN neuron computes
 pub struct FfnCircuit {
-    pub neuron_idx: usize,
     pub pattern_type: FfnPattern,
     pub top_inputs: Vec<(usize, f64)>,  // (input_dim, weight)
-    pub activation_threshold: f64,
 }
 
 #[derive(Debug, Clone)]
 pub enum FfnPattern {
-    KeyValue(usize, usize),  // (key_token, value_token) memory
     FeatureDetect(String),    // Detects some feature
-    AlwaysOn,
     AlwaysOff,
-    Unknown,
 }
 
 impl std::fmt::Display for FfnPattern {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FfnPattern::KeyValue(k, v) => write!(f, "key-value({}, {})", k, v),
             FfnPattern::FeatureDetect(desc) => write!(f, "feature({})", desc),
-            FfnPattern::AlwaysOn => write!(f, "always-on"),
             FfnPattern::AlwaysOff => write!(f, "always-off"),
-            FfnPattern::Unknown => write!(f, "unknown"),
         }
     }
 }
@@ -898,16 +831,14 @@ impl std::fmt::Display for FfnPattern {
 fn analyze_head_pattern(
     w_q: &[f64],
     w_k: &[f64],
-    w_v: &[f64],
-    w_o: &[f64],
     b_q: Option<&Vec<f64>>,
     b_k: Option<&Vec<f64>>,
-    b_v: Option<&Vec<f64>>,
     d_model: usize,
-    head_dim: usize,
     pos_emb: Option<&[Vec<f64>]>,
     token_emb: &[Vec<f64>],
 ) -> HeadPattern {
+    // Each head slice is [head_dim, d_model] row-major
+    let head_dim = w_q.len() / d_model;
     // Test with multiple sequence lengths and actual token variations
     let test_seq_lens = vec![4, 8, 16];
     let test_tokens: Vec<usize> = vec![0, 5, 10, 15]; // Different token IDs to test content sensitivity
@@ -972,10 +903,10 @@ fn analyze_head_pattern(
 
             // Compute attention scores
             let mut attn_pattern: Vec<Vec<f64>> = Vec::with_capacity(seq_len);
-            for q_pos in 0..seq_len {
+            for q_vec in &q_vecs {
                 let mut scores: Vec<f64> = Vec::with_capacity(seq_len);
-                for k_pos in 0..seq_len {
-                    let score: f64 = q_vecs[q_pos].iter().zip(k_vecs[k_pos].iter())
+                for k_vec in &k_vecs {
+                    let score: f64 = q_vec.iter().zip(k_vec.iter())
                         .map(|(q, k)| q * k).sum::<f64>() / (head_dim as f64).sqrt();
                     scores.push(score);
                 }
@@ -1002,9 +933,6 @@ fn analyze_attention_behavior(patterns: &[Vec<Vec<f64>>]) -> HeadPattern {
     }
 
     // Check consistency across different test cases
-    let mut is_prev_token = true;
-    let mut is_first_token = true;
-    let mut is_self_token = true;
     let mut is_uniform = true;
     let mut content_sensitive = false;
 
@@ -1018,9 +946,7 @@ fn analyze_attention_behavior(patterns: &[Vec<Vec<f64>>]) -> HeadPattern {
 
         let uniform_attn = 1.0 / seq_len as f64;
 
-        for q_pos in 0..seq_len {
-            let attn = &pattern[q_pos];
-
+        for (q_pos, attn) in pattern.iter().enumerate() {
             // Find where attention goes
             let (max_pos, &max_val) = attn.iter().enumerate()
                 .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
@@ -1096,26 +1022,13 @@ fn analyze_attention_behavior(patterns: &[Vec<Vec<f64>>]) -> HeadPattern {
 }
 
 /// HONEST FFN neuron analysis - reports actual weight patterns without false "logic gate" claims
-fn analyze_ffn_neuron(
-    w_in: &[f64],
-    b_in: Option<&Vec<f64>>,
-    w_out_col: &[f64],
-    d_model: usize,
-    neuron_idx: usize
-) -> FfnCircuit {
+fn analyze_ffn_neuron(w_in: &[f64], w_out_col: &[f64]) -> FfnCircuit {
     // Collect all significant input weights (> 0.01 threshold)
     let mut input_weights: Vec<(usize, f64)> = w_in.iter().enumerate()
         .map(|(i, &w)| (i, w))
         .filter(|(_, w)| w.abs() > 0.01)
         .collect();
     input_weights.sort_by(|a, b| b.1.abs().partial_cmp(&a.1.abs()).unwrap());
-
-    // Get actual bias value
-    let bias = b_in.map(|b| b.get(neuron_idx).copied().unwrap_or(0.0)).unwrap_or(0.0);
-
-    // Calculate actual activation threshold
-    // For ReLU/GELU: neuron activates when sum(inputs * weights) + bias > 0
-    let threshold = -bias;
 
     // Determine if neuron matters (has output connections)
     let max_output = w_out_col.iter().map(|&w| w.abs()).fold(0.0_f64, f64::max);
@@ -1166,10 +1079,8 @@ fn analyze_ffn_neuron(
     input_weights.truncate(5);
 
     FfnCircuit {
-        neuron_idx,
         pattern_type: pattern,
         top_inputs: input_weights,
-        activation_threshold: threshold,
     }
 }
 
@@ -1179,7 +1090,7 @@ pub fn decompile_transformer_circuit(t: &QuantizedTransformer) -> TransformerCir
     let mut ffn_circuits: Vec<Vec<FfnCircuit>> = Vec::with_capacity(t.n_layers);
     let mut important_neurons: Vec<Vec<usize>> = Vec::with_capacity(t.n_layers);
 
-    for (li, layer) in t.layers.iter().enumerate() {
+    for layer in &t.layers {
         let head_dim = t.d_model / layer.n_heads;
 
         // Analyze attention heads with FULL simulation (token + position + bias)
@@ -1189,20 +1100,16 @@ pub fn decompile_transformer_circuit(t: &QuantizedTransformer) -> TransformerCir
             // Extract all attention weights for this head
             let w_q_h: Vec<f64> = layer.w_q[h_off * t.d_model..(h_off + head_dim) * t.d_model].to_vec();
             let w_k_h: Vec<f64> = layer.w_k[h_off * t.d_model..(h_off + head_dim) * t.d_model].to_vec();
-            let w_v_h: Vec<f64> = layer.w_v[h_off * t.d_model..(h_off + head_dim) * t.d_model].to_vec();
-            let w_o_h: Vec<f64> = layer.w_o[h_off * t.d_model..(h_off + head_dim) * t.d_model].to_vec();
 
             // Extract biases for this head
             let b_q_h = layer.b_q.as_ref().map(|b| b[h_off..h_off + head_dim].to_vec());
             let b_k_h = layer.b_k.as_ref().map(|b| b[h_off..h_off + head_dim].to_vec());
-            let b_v_h = layer.b_v.as_ref().map(|b| b[h_off..h_off + head_dim].to_vec());
 
             let pattern = analyze_head_pattern(
-                &w_q_h, &w_k_h, &w_v_h, &w_o_h,
+                &w_q_h, &w_k_h,
                 b_q_h.as_ref(),
                 b_k_h.as_ref(),
-                b_v_h.as_ref(),
-                t.d_model, head_dim,
+                t.d_model,
                 t.pos_emb.as_deref(),
                 &t.token_emb,
             );
@@ -1220,10 +1127,7 @@ pub fn decompile_transformer_circuit(t: &QuantizedTransformer) -> TransformerCir
             // Output weights for this neuron
             let w_out_col: Vec<f64> = (0..t.d_model).map(|i| layer.w_ff_out[n * t.d_model + i]).collect();
 
-            // Extract bias for this neuron
-            let b_in = layer.b_ff_in.as_ref();
-
-            let circuit = analyze_ffn_neuron(&w_in, b_in, &w_out_col, t.d_model, n);
+            let circuit = analyze_ffn_neuron(&w_in, &w_out_col);
 
             // Check if this neuron matters (has significant output weights)
             let has_output = w_out_col.iter().any(|&w| w.abs() > 0.01);
@@ -1268,18 +1172,18 @@ pub fn emit_transformer_circuit(t: &QuantizedTransformer, name: &str) -> String 
             match pattern {
                 HeadPattern::PrevToken => {
                     lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push(format!("        # Attends to position q_pos - 1"));
-                    lines.push(format!("        return 1.0 if k_pos == q_pos - 1 else 0.0"));
+                    lines.push("        # Attends to position q_pos - 1".to_string());
+                    lines.push("        return 1.0 if k_pos == q_pos - 1 else 0.0".to_string());
                 }
                 HeadPattern::FirstToken => {
                     lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push(format!("        # Always attends to position 0"));
-                    lines.push(format!("        return 1.0 if k_pos == 0 else 0.0"));
+                    lines.push("        # Always attends to position 0".to_string());
+                    lines.push("        return 1.0 if k_pos == 0 else 0.0".to_string());
                 }
                 HeadPattern::CurrentToken => {
                     lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push(format!("        # Attends to self"));
-                    lines.push(format!("        return 1.0 if k_pos == q_pos else 0.0"));
+                    lines.push("        # Attends to self".to_string());
+                    lines.push("        return 1.0 if k_pos == q_pos else 0.0".to_string());
                 }
                 HeadPattern::PositionalShift(n) => {
                     lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
@@ -1288,24 +1192,24 @@ pub fn emit_transformer_circuit(t: &QuantizedTransformer, name: &str) -> String 
                 }
                 HeadPattern::Uniform => {
                     lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push(format!("        # Uniform attention to all positions"));
-                    lines.push(format!("        return 1.0 / seq_len"));
+                    lines.push("        # Uniform attention to all positions".to_string());
+                    lines.push("        return 1.0 / seq_len".to_string());
                 }
                 HeadPattern::ContentSensitive => {
                     lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push(format!("        # Content-sensitive: attention varies by token ID"));
-                    lines.push(format!("        # (Detected via testing with different token values)"));
-                    lines.push(format!("        return attention_by_token_match(q_token, k_token)"));
+                    lines.push("        # Content-sensitive: attention varies by token ID".to_string());
+                    lines.push("        # (Detected via testing with different token values)".to_string());
+                    lines.push("        return attention_by_token_match(q_token, k_token)".to_string());
                 }
                 HeadPattern::Mixed => {
                     lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push(format!("        # Mixed attention pattern"));
-                    lines.push(format!("        return 1.0 / (abs(q_pos - k_pos) + 1)"));
+                    lines.push("        # Mixed attention pattern".to_string());
+                    lines.push("        return 1.0 / (abs(q_pos - k_pos) + 1)".to_string());
                 }
                 _ => {
                     lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push(format!("        # Complex attention pattern (run trace to analyze)"));
-                    lines.push(format!("        return softmax(Q[q_pos] @ K[k_pos].T)"));
+                    lines.push("        # Complex attention pattern (run trace to analyze)".to_string());
+                    lines.push("        return softmax(Q[q_pos] @ K[k_pos].T)".to_string());
                 }
             }
             lines.push(String::new());
@@ -1336,21 +1240,21 @@ pub fn emit_transformer_circuit(t: &QuantizedTransformer, name: &str) -> String 
 
     // Full execution model
     lines.push(format!("def {}_circuit(tokens):", name));
-    lines.push(format!("    \"\"\"Full circuit execution.\"\"\""));
-    lines.push(format!("    # Token embeddings"));
-    lines.push(format!("    hidden = [TOKEN_EMB[t] for t in tokens]"));
+    lines.push("    \"\"\"Full circuit execution.\"\"\"".to_string());
+    lines.push("    # Token embeddings".to_string());
+    lines.push("    hidden = [TOKEN_EMB[t] for t in tokens]".to_string());
     lines.push(String::new());
 
     for li in 0..t.n_layers {
         lines.push(format!("    # Layer {}", li));
         lines.push(format!("    attn = Layer{}Attention()", li));
-        lines.push(format!("    # ... multi-head attention ..."));
+        lines.push("    # ... multi-head attention ...".to_string());
         lines.push(format!("    # ... FFN with {} important neurons ...", circuit.important_neurons[li].len()));
         lines.push(String::new());
     }
 
-    lines.push(format!("    # Output projection"));
-    lines.push(format!("    return logits"));
+    lines.push("    # Output projection".to_string());
+    lines.push("    return logits".to_string());
 
     lines.join("\n") + "\n"
 }

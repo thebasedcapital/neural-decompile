@@ -8,7 +8,6 @@ pub struct PairResult {
     pub a: String,
     pub b: String,
     pub structural_sim: f64,   // avg cosine sim of transition function (0 if dim mismatch)
-    pub output_sim: f64,       // cosine sim of output weights
     pub is_complement: bool,
     pub behavioral_agree: f64, // % agreement on shared input space
     pub relationship: String,
@@ -131,7 +130,6 @@ pub fn build_taxonomy(circuits: &[(String, QuantizedRnn)]) -> Vec<PairResult> {
                 a: name_a.clone(),
                 b: name_b.clone(),
                 structural_sim,
-                output_sim: cmp.w_y_sim,
                 is_complement: cmp.output_negated || complement > 0.95,
                 behavioral_agree: behavioral,
                 relationship,

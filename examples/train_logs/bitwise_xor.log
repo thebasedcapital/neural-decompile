@@ -1,0 +1,27 @@
+== bitwise_xor: 16 exhaustive cases, in=4 out=4
+   hidden=3 seed= 0 float_acc=0.812 near_int=0.97
+   hidden=3 seed= 1 float_acc=0.750 near_int=0.88
+   hidden=3 seed= 2 float_acc=0.875 near_int=0.82
+   hidden=3 seed= 3 float_acc=1.000 near_int=0.88
+   hidden=3 seed= 4 float_acc=0.875 near_int=0.93
+   hidden=3 seed= 5 float_acc=0.812 near_int=0.90
+   hidden=3 seed= 6 float_acc=0.625 near_int=1.00
+   hidden=3 seed= 7 float_acc=0.875 near_int=0.90
+   hidden=3 seed= 8 float_acc=0.750 near_int=0.93
+   hidden=3 seed= 9 float_acc=0.875 near_int=0.90
+   hidden=3 seed=10 float_acc=0.812 near_int=0.93
+   hidden=3 seed=11 float_acc=0.875 near_int=0.90
+   hidden=3 seed=12 float_acc=0.938 near_int=0.93
+   hidden=3 seed=13 float_acc=0.688 near_int=0.95
+   hidden=3 seed=14 float_acc=0.562 near_int=0.82
+   hidden=3 seed=15 float_acc=1.000 near_int=0.93
+   hidden=3 seed=16 float_acc=0.812 near_int=0.93
+   hidden=3 seed=17 float_acc=0.750 near_int=1.00
+   hidden=3 seed=18 float_acc=0.938 near_int=0.95
+   hidden=3 seed=19 float_acc=0.875 near_int=0.95
+   hidden=3 seed=20 float_acc=0.812 near_int=0.90
+   hidden=3 seed=21 float_acc=0.562 near_int=0.88
+   hidden=3 seed=22 float_acc=0.750 near_int=0.97
+   hidden=3 seed=23 float_acc=0.750 near_int=0.95
+   hidden=3: 2/24 seeds reach 100% float accuracy (33s)
+   -> exporting hidden=3 seed=15 (near_int=0.93)

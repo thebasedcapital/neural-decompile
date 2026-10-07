@@ -1,114 +1,42 @@
-# Transformer Decompilation & Verification
+# Transformer decompilation and verification
 
-## What Was Built
+`nd` supports the transformer JSON schema in `src/transformer.rs`: token/position embeddings, attention projections, feed-forward layers, optional layer normalization, and output projection. It emits Python or Rust for that schema. GGUF tensor inspection is a separate capability; it does not supply general end-to-end transformer decompilation.
 
-Extended the neural-decompile toolchain to support **transformers** in addition to RNNs:
+## Reproduce with a checked-in model
 
-| Component | Status | Description |
-|-----------|--------|-------------|
-| `QuantizedTransformer` | ✅ Working | Full transformer quantization (embeddings, attention, FFN, layer norms) |
-| `emit_transformer_python()` | ✅ Working | Decompile to readable Python code |
-| `emit_transformer_rust()` | ✅ Working | Decompile to readable Rust code |
-| `emit_transformer_table()` | ✅ Working | Summary table output |
-| `verify::forward_quantized()` | ✅ Working | Quantized forward pass for verification |
-| `verify_decompiled_transformer()` | ✅ Working | Numerical verification with tolerance |
-
-## Verification Method
-
-### How It Works
-
-1. **Load original transformer** from JSON weights
-2. **Quantize with minimal epsilon (0.001)** to preserve embeddings
-3. **Run both forward passes** on test token sequences:
-   - `original.forward(tokens)` — reference implementation
-   - `forward_quantized(quantized, tokens)` — decompiled equivalent
-4. **Compare logits numerically** within 1% tolerance
-5. **Report match/mismatch**
-
-### Key Insight: Quantization Matters
-
-The default `eps=0.15` snaps small embedding values to zero, destroying the model:
-
-```python
-# With eps=0.15, token_emb[1] becomes all zeros:
-[-0.049, 0.060, -0.117, -0.009, ...] → [0, 0, 0, 0, ...]
-```
-
-**Solution**: Use `eps=0.001` for verification, preserving 99%+ of weights exactly.
-
-## Test Results
-
-### Trained RNN (parity3)
-```
-Verification: 8/8 passed (100%)
-✓ PERFECT — decompiled FSM matches all test cases
-```
-
-### Random Transformer (transformer_mod7)
-```
-Transformer Verification: 33/49 passed (67%)
-```
-
-The 67% is expected — the model has **random weights** (untrained), so many test cases naturally fail. The 33 passing cases happen to have logits that match within tolerance.
-
-## Usage
+Use an explicit epsilon when comparing generation and verification so both operations quantize the same weights:
 
 ```bash
-# Decompile transformer to Python
-./target/release/nd decompile examples/transformer_mod7.json --format python
-
-# Decompile to Rust
-./target/release/nd decompile examples/transformer_mod7.json --format rust
-
-# Verify against test cases (numerical comparison)
-./target/release/nd verify examples/transformer_mod7.json examples/transformer_mod7_tests.json
-
-# Show stats
-./target/release/nd stats examples/transformer_mod7.json
+cargo build --release
+target/release/nd decompile examples/parity_transformer.json --eps 0.001 --format python --output /tmp/parity_transformer.py
+target/release/nd decompile examples/parity_transformer.json --eps 0.001 --format rust --output /tmp/parity_transformer.rs
+target/release/nd verify examples/parity_transformer.json examples/parity_transformer_tests.json --eps 0.001
 ```
 
-## Architecture
+Snapping small embedding values to zero can change predictions. Epsilon is a modeling choice, not a guarantee of fidelity. A weight outside the snap threshold remains floating-point.
 
-The decompiled transformer includes:
+## What `verify` checks
 
-```python
-def decompiled(tokens):
-    # Token + position embeddings
-    hidden = [token_emb[tok] + pos_emb[i] for i, tok in enumerate(tokens)]
-    
-    # For each layer:
-    #   1. Layer norm → Q, K, V projections
-    #   2. Multi-head attention (scores → softmax → apply to V)
-    #   3. Output projection + residual
-    #   4. Layer norm → FFN (w1 → ReLU → w2)
-    #   5. Residual
-    
-    # Final layer norm
-    # Output projection to vocab
-    return logits
-```
+For each token sequence:
 
-All weights are inlined as constants in the generated code.
+1. Run the original transformer weights.
+2. Run the internal quantized transformer implementation.
+3. Require every final-position logit to differ by **less than 0.01 in absolute value**.
+4. Require both original and quantized predictions to match the fixture's expected class.
 
-## Files Added/Modified
+The tolerance is **not relative 1% error**, and passing is **not numerical identity**. Classification agreement must be checked separately: even a small logit perturbation can reverse the winning class near a tie.
 
-| File | Changes |
-|------|---------|
-| `src/transformer.rs` | Added `forward()` for full transformer inference |
-| `src/quantize.rs` | Added `QuantizedTransformer`, `QuantizedLayer`, `quantize_transformer()` |
-| `src/emit.rs` | Added `emit_transformer_python/rust/table()` |
-| `src/verify.rs` | Added `forward_quantized()`, `verify_decompiled_transformer()` |
-| `src/main.rs` | Updated `Decompile` and `Verify` commands to handle transformers |
-| `examples/transformer_mod7.json` | Test transformer weights |
-| `examples/transformer_mod7_tests.json` | Generated test cases |
+`verify` does not compile or execute the emitted source. Behavioral tests and explicit generated-program runs cover that separate boundary. A successful finite fixture evaluation is not a formal proof over arbitrary token sequences.
 
-## Verification Formula
+## Implementation
 
-For each test case, the verification checks:
+| File | Responsibility |
+|---|---|
+| `src/transformer.rs` | JSON loading and original forward pass |
+| `src/quantize.rs` | Weight snapping |
+| `src/verify.rs` | Quantized forward pass and fixture comparison |
+| `src/emit.rs` | Python/Rust generation |
+| `examples/parity_transformer.json` | Checked-in model |
+| `examples/parity_transformer_tests.json` | Eight fixture cases |
 
-```rust
-let logits_match = orig_last.iter().zip(quant_last.iter())
-    .all(|(a, b)| (a - b).abs() < tolerance);  // tolerance = 0.01
-```
-
-This ensures the quantized forward pass produces **numerically identical** results to the original.
+Current fixture results are generated by `make bench` into [results/benchmark.md](results/benchmark.md). Historical results referring to an untracked `transformer_mod7.json` are not a reproducible benchmark for this checkout.

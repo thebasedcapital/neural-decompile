@@ -33,6 +33,7 @@ struct JsonWeights {
 fn vec2d_to_array2(v: &[Vec<f64>]) -> Result<Array2<f64>> {
     let rows = v.len();
     let cols = v.first().map_or(0, |r| r.len());
+    anyhow::ensure!(v.iter().all(|row| row.len() == cols), "Ragged weight matrix");
     let flat: Vec<f64> = v.iter().flat_map(|r| r.iter().copied()).collect();
     Array2::from_shape_vec((rows, cols), flat)
         .context("Failed to reshape weight matrix")
@@ -51,6 +52,11 @@ pub fn load_rnn_weights(path: &Path) -> Result<RnnWeights> {
     let hidden_dim = w_hh.nrows();
     let input_dim = w_hx.ncols();
     let output_dim = w_y.nrows();
+    anyhow::ensure!(hidden_dim > 0 && input_dim > 0 && output_dim > 0,
+        "Model dimensions must be nonzero");
+    anyhow::ensure!(w_hh.ncols() == hidden_dim && w_hx.nrows() == hidden_dim
+        && json.b_h.len() == hidden_dim && w_y.ncols() == hidden_dim
+        && json.b_y.len() == output_dim, "Inconsistent RNN weight dimensions");
 
     Ok(RnnWeights {
         w_hh, w_hx, b_h: json.b_h, w_y, b_y: json.b_y,
@@ -85,29 +91,6 @@ pub enum ModelType {
 pub enum NeuralProgram {
     Rnn(RnnWeights),
     Transformer(super::transformer::Transformer),
-}
-
-impl NeuralProgram {
-    pub fn input_dim(&self) -> usize {
-        match self {
-            NeuralProgram::Rnn(r) => r.input_dim,
-            NeuralProgram::Transformer(t) => t.d_model, // Token embedding dimension
-        }
-    }
-
-    pub fn output_dim(&self) -> usize {
-        match self {
-            NeuralProgram::Rnn(r) => r.output_dim,
-            NeuralProgram::Transformer(t) => t.vocab_size,
-        }
-    }
-
-    pub fn model_type(&self) -> ModelType {
-        match self {
-            NeuralProgram::Rnn(_) => ModelType::Rnn,
-            NeuralProgram::Transformer(_) => ModelType::Transformer,
-        }
-    }
 }
 
 /// Auto-detect and load either RNN or Transformer

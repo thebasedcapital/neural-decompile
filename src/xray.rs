@@ -1,7 +1,7 @@
 use crate::emit;
-use crate::quantize::{self, QuantizedRnn, QuantizedTransformer};
+use crate::quantize::{self, QuantizedRnn};
 use crate::slice;
-use crate::trace::{self, Trace, TransformerTrace};
+use crate::trace::{self, Trace};
 use crate::verify::TestCase;
 use crate::weights::RnnWeights;
 use crate::transformer::Transformer;
@@ -14,7 +14,6 @@ pub struct XrayReport {
     pub output_dim: usize,
     pub pct_integer: f64,
     pub total_weights: usize,
-    pub dead_neurons: Vec<usize>,
     /// Sliced circuit info (if tests provided)
     pub slice_info: Option<SliceInfo>,
     /// Hybrid decomposition per neuron
@@ -55,7 +54,6 @@ pub struct OutputXray {
     pub class: usize,
     pub integer_terms: Vec<(String, i64)>,
     pub residual_terms: Vec<(String, f64)>,
-    pub residual_magnitude: f64,
     pub bias_int: Option<i64>,
     pub bias_residual: Option<f64>,
 }
@@ -139,7 +137,6 @@ fn xray_neuron(q: &QuantizedRnn, i: usize) -> NeuronXray {
 fn xray_output(q: &QuantizedRnn, o: usize) -> OutputXray {
     let mut integer_terms = Vec::new();
     let mut residual_terms = Vec::new();
-    let mut residual_mag = 0.0_f64;
 
     for j in 0..q.hidden_dim {
         let v = q.w_y[[o, j]];
@@ -149,20 +146,15 @@ fn xray_output(q: &QuantizedRnn, o: usize) -> OutputXray {
         }
         if let Some(r) = res_part {
             residual_terms.push((format!("h[{}]", j), r));
-            residual_mag += r.abs();
         }
     }
 
     let (bias_int, bias_residual) = decompose_weight(q.b_y[o]);
-    if let Some(r) = bias_residual {
-        residual_mag += r.abs();
-    }
 
     OutputXray {
         class: o,
         integer_terms,
         residual_terms,
-        residual_magnitude: residual_mag,
         bias_int,
         bias_residual,
     }
@@ -195,14 +187,16 @@ fn pick_sample_inputs(rnn: &RnnWeights, tests: Option<&[TestCase]>) -> Vec<(Stri
             }
         }
     } else {
-        // Generate some default binary sequences
+        // Default binary sequences: scalar for 1-dim inputs, one-hot for wider inputs
         for bits in &["0,0,0", "1,1,1", "1,0,1", "0,1,0"] {
             let input_vecs: Vec<Vec<f64>> = bits.split(',').map(|b| {
-                let b: u8 = b.parse().unwrap();
-                if rnn.input_dim == 2 {
-                    if b == 0 { vec![1.0, 0.0] } else { vec![0.0, 1.0] }
-                } else {
+                let b: usize = b.parse().unwrap();
+                if rnn.input_dim == 1 {
                     vec![b as f64]
+                } else {
+                    let mut v = vec![0.0; rnn.input_dim];
+                    v[b.min(rnn.input_dim - 1)] = 1.0;
+                    v
                 }
             }).collect();
             samples.push((bits.to_string(), input_vecs));
@@ -271,7 +265,6 @@ pub fn run_xray(
         output_dim: q.output_dim,
         pct_integer: stats.pct_integer * 100.0,
         total_weights: stats.total_weights,
-        dead_neurons: stats.dead_neurons,
         slice_info,
         neurons,
         outputs,
@@ -631,7 +624,7 @@ pub fn format_xray(report: &XrayReport) -> String {
         }
     }
 
-    out.push_str("\n");
+    out.push('\n');
     out.push_str(&report.python_code);
 
     out

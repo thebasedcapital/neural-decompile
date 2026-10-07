@@ -1,4 +1,5 @@
-use crate::quantize::{QuantizedRnn, QuantizedTransformer, QuantizedLayer};
+use ndarray::Array2;
+use crate::quantize::QuantizedRnn;
 use crate::weights::RnnWeights;
 use crate::transformer::Transformer;
 
@@ -20,25 +21,36 @@ pub struct Trace {
     pub output_logits: Vec<f64>,
     pub prediction: usize,
     pub hidden_dim: usize,
-    pub input_dim: usize,
 }
 
-/// Run an RNN (quantized or raw) and record every hidden state
-pub fn trace_quantized(q: &QuantizedRnn, input_sequence: &[Vec<f64>]) -> Trace {
-    let mut h = vec![0.0_f64; q.hidden_dim];
+/// Borrowed view of RNN weights shared by the quantized and raw tracers.
+struct RnnView<'a> {
+    w_hh: &'a Array2<f64>,
+    w_hx: &'a Array2<f64>,
+    b_h: &'a [f64],
+    w_y: &'a Array2<f64>,
+    b_y: &'a [f64],
+    hidden_dim: usize,
+    input_dim: usize,
+    output_dim: usize,
+}
+
+/// Run an RNN and record every hidden state
+fn trace_rnn(w: &RnnView, input_sequence: &[Vec<f64>]) -> Trace {
+    let mut h = vec![0.0_f64; w.hidden_dim];
     let mut steps = Vec::with_capacity(input_sequence.len());
 
     for (t, x) in input_sequence.iter().enumerate() {
-        let mut pre_relu = vec![0.0; q.hidden_dim];
-        let mut h_new = vec![0.0; q.hidden_dim];
+        let mut pre_relu = vec![0.0; w.hidden_dim];
+        let mut h_new = vec![0.0; w.hidden_dim];
 
-        for i in 0..q.hidden_dim {
-            let mut val = q.b_h[i];
-            for j in 0..q.hidden_dim {
-                val += q.w_hh[[i, j]] * h[j];
+        for i in 0..w.hidden_dim {
+            let mut val = w.b_h[i];
+            for (j, &h_j) in h.iter().enumerate() {
+                val += w.w_hh[[i, j]] * h_j;
             }
-            for j in 0..q.input_dim {
-                val += q.w_hx[[i, j]] * x[j];
+            for (j, &x_j) in x[..w.input_dim].iter().enumerate() {
+                val += w.w_hx[[i, j]] * x_j;
             }
             pre_relu[i] = val;
             h_new[i] = val.max(0.0);
@@ -54,82 +66,65 @@ pub fn trace_quantized(q: &QuantizedRnn, input_sequence: &[Vec<f64>]) -> Trace {
     }
 
     // Output logits
-    let mut logits = vec![0.0; q.output_dim];
-    for i in 0..q.output_dim {
-        logits[i] = q.b_y[i];
-        for j in 0..q.hidden_dim {
-            logits[i] += q.w_y[[i, j]] * h[j];
+    let logits: Vec<f64> = (0..w.output_dim)
+        .map(|i| {
+            let mut logit = w.b_y[i];
+            for (j, &h_j) in h.iter().enumerate() {
+                logit += w.w_y[[i, j]] * h_j;
+            }
+            logit
+        })
+        .collect();
+
+    // First-index-wins on ties, matching the canonical runtime (fsm::run_fsm)
+    // and emitted code — NOT Rust's max_by, which keeps the *last* max.
+    let mut prediction = 0;
+    for (i, &v) in logits.iter().enumerate() {
+        if v > logits[prediction] {
+            prediction = i;
         }
     }
-
-    let prediction = logits
-        .iter()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .unwrap()
-        .0;
 
     Trace {
         steps,
         output_logits: logits,
         prediction,
-        hidden_dim: q.hidden_dim,
-        input_dim: q.input_dim,
+        hidden_dim: w.hidden_dim,
     }
+}
+
+/// Run the quantized RNN and record every hidden state
+pub fn trace_quantized(q: &QuantizedRnn, input_sequence: &[Vec<f64>]) -> Trace {
+    trace_rnn(
+        &RnnView {
+            w_hh: &q.w_hh,
+            w_hx: &q.w_hx,
+            b_h: &q.b_h,
+            w_y: &q.w_y,
+            b_y: &q.b_y,
+            hidden_dim: q.hidden_dim,
+            input_dim: q.input_dim,
+            output_dim: q.output_dim,
+        },
+        input_sequence,
+    )
 }
 
 /// Run raw (unquantized) RNN and trace it
 pub fn trace_raw(rnn: &RnnWeights, input_sequence: &[Vec<f64>]) -> Trace {
-    let mut h = vec![0.0_f64; rnn.hidden_dim];
-    let mut steps = Vec::with_capacity(input_sequence.len());
-
-    for (t, x) in input_sequence.iter().enumerate() {
-        let mut pre_relu = vec![0.0; rnn.hidden_dim];
-        let mut h_new = vec![0.0; rnn.hidden_dim];
-
-        for i in 0..rnn.hidden_dim {
-            let mut val = rnn.b_h[i];
-            for j in 0..rnn.hidden_dim {
-                val += rnn.w_hh[[i, j]] * h[j];
-            }
-            for j in 0..rnn.input_dim {
-                val += rnn.w_hx[[i, j]] * x[j];
-            }
-            pre_relu[i] = val;
-            h_new[i] = val.max(0.0);
-        }
-
-        steps.push(TraceStep {
-            t,
-            input: x.clone(),
-            pre_relu,
-            hidden: h_new.clone(),
-        });
-        h = h_new;
-    }
-
-    let mut logits = vec![0.0; rnn.output_dim];
-    for i in 0..rnn.output_dim {
-        logits[i] = rnn.b_y[i];
-        for j in 0..rnn.hidden_dim {
-            logits[i] += rnn.w_y[[i, j]] * h[j];
-        }
-    }
-
-    let prediction = logits
-        .iter()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .unwrap()
-        .0;
-
-    Trace {
-        steps,
-        output_logits: logits,
-        prediction,
-        hidden_dim: rnn.hidden_dim,
-        input_dim: rnn.input_dim,
-    }
+    trace_rnn(
+        &RnnView {
+            w_hh: &rnn.w_hh,
+            w_hx: &rnn.w_hx,
+            b_h: &rnn.b_h,
+            w_y: &rnn.w_y,
+            b_y: &rnn.b_y,
+            hidden_dim: rnn.hidden_dim,
+            input_dim: rnn.input_dim,
+            output_dim: rnn.output_dim,
+        },
+        input_sequence,
+    )
 }
 
 /// Format trace as a readable table
@@ -137,7 +132,7 @@ pub fn format_trace(trace: &Trace) -> String {
     let mut out = String::new();
 
     // Header
-    out.push_str(&format!("  t │ input"));
+    out.push_str("  t │ input");
     for i in 0..trace.hidden_dim {
         out.push_str(&format!(" │ h{:<3}", i));
     }
@@ -148,7 +143,7 @@ pub fn format_trace(trace: &Trace) -> String {
     out.push('\n');
 
     // Initial state
-    out.push_str(&format!("  - │     "));
+    out.push_str("  - │     ");
     for _ in 0..trace.hidden_dim {
         out.push_str(&format!(" │ {:>4.1}", 0.0));
     }
@@ -285,10 +280,13 @@ pub fn trace_transformer(t: &Transformer, tokens: &[usize]) -> TransformerTrace 
         out
     }).collect();
 
+    // First-index-wins on ties, matching fsm::run_fsm / verify::argmax / emitted code.
     let predictions: Vec<usize> = output_logits.iter().map(|logits| {
-        logits.iter().enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .unwrap().0
+        let mut best = 0;
+        for (i, &v) in logits.iter().enumerate() {
+            if v > logits[best] { best = i; }
+        }
+        best
     }).collect();
 
     TransformerTrace {
@@ -374,8 +372,8 @@ fn trace_transformer_layer(
     for (i, h) in x_ffn.iter().enumerate() {
         for j in 0..layer.d_ff {
             let mut sum = layer.b_ff_in.as_ref().map(|b| b[j]).unwrap_or(0.0);
-            for k in 0..d_model {
-                sum += h[k] * layer.w_ff_in[k * layer.d_ff + j];
+            for (k, &h_k) in h[..d_model].iter().enumerate() {
+                sum += h_k * layer.w_ff_in[k * layer.d_ff + j];
             }
             ffn_hidden[i][j] = sum;
         }
@@ -395,8 +393,8 @@ fn trace_transformer_layer(
     for (i, h) in ffn_hidden.iter().enumerate() {
         for j in 0..d_model {
             let mut sum = layer.b_ff_out.as_ref().map(|b| b[j]).unwrap_or(0.0);
-            for k in 0..layer.d_ff {
-                sum += h[k] * layer.w_ff_out[k * d_model + j];
+            for (k, &h_k) in h[..layer.d_ff].iter().enumerate() {
+                sum += h_k * layer.w_ff_out[k * d_model + j];
             }
             ffn_out[i][j] = sum;
         }
@@ -452,7 +450,7 @@ fn gelu(x: f64) -> f64 {
 pub fn format_transformer_trace(trace: &TransformerTrace) -> String {
     let mut out = String::new();
 
-    out.push_str(&format!("=== Transformer Trace ===\n"));
+    out.push_str("=== Transformer Trace ===\n");
     out.push_str(&format!("Layers: {}, d_model: {}, seq_len: {}\n\n", trace.n_layers, trace.d_model, trace.seq_len));
 
     // Initial embeddings
@@ -474,7 +472,7 @@ pub fn format_transformer_trace(trace: &TransformerTrace) -> String {
             for (i, row) in attn.weights.iter().enumerate() {
                 if i > 0 { out.push_str("         "); }
                 out.push_str(&format!("[{}] ", i));
-                for (_j, &w) in row.iter().enumerate() {
+                for &w in row.iter() {
                     let symbol = if w > 0.5 { "██" }
                         else if w > 0.25 { "▓▓" }
                         else if w > 0.1 { "░░" }

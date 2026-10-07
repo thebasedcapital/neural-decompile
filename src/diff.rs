@@ -4,7 +4,6 @@ use crate::quantize::QuantizedRnn;
 #[derive(Debug)]
 pub struct CircuitDiff {
     pub hidden_dim_a: usize,
-    pub hidden_dim_b: usize,
     /// Per-neuron changes in the transition function
     pub neuron_diffs: Vec<NeuronDiff>,
     /// Changes in output layer
@@ -181,7 +180,6 @@ pub fn diff_circuits(a: &QuantizedRnn, b: &QuantizedRnn) -> Result<CircuitDiff, 
 
     Ok(CircuitDiff {
         hidden_dim_a: a.hidden_dim,
-        hidden_dim_b: b.hidden_dim,
         neuron_diffs,
         output_diffs,
         total_changed_weights: total_changed,

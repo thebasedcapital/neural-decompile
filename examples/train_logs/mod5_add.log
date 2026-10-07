@@ -1,0 +1,27 @@
+== mod5_add: 25 exhaustive cases, in=5 out=5
+   hidden=3 seed= 0 float_acc=0.720 near_int=0.94
+   hidden=3 seed= 1 float_acc=0.800 near_int=0.77
+   hidden=3 seed= 2 float_acc=0.720 near_int=0.91
+   hidden=3 seed= 3 float_acc=0.920 near_int=0.79
+   hidden=3 seed= 4 float_acc=0.920 near_int=0.87
+   hidden=3 seed= 5 float_acc=0.480 near_int=0.87
+   hidden=3 seed= 6 float_acc=0.720 near_int=0.85
+   hidden=3 seed= 7 float_acc=0.640 near_int=0.87
+   hidden=3 seed= 8 float_acc=0.560 near_int=0.89
+   hidden=3 seed= 9 float_acc=1.000 near_int=0.91
+   hidden=3 seed=10 float_acc=0.560 near_int=0.91
+   hidden=3 seed=11 float_acc=0.640 near_int=0.87
+   hidden=3 seed=12 float_acc=0.800 near_int=0.79
+   hidden=3 seed=13 float_acc=0.480 near_int=0.83
+   hidden=3 seed=14 float_acc=0.920 near_int=0.85
+   hidden=3 seed=15 float_acc=0.600 near_int=0.79
+   hidden=3 seed=16 float_acc=0.640 near_int=0.89
+   hidden=3 seed=17 float_acc=0.800 near_int=0.85
+   hidden=3 seed=18 float_acc=0.760 near_int=0.87
+   hidden=3 seed=19 float_acc=0.840 near_int=0.85
+   hidden=3 seed=20 float_acc=0.560 near_int=0.91
+   hidden=3 seed=21 float_acc=0.920 near_int=0.85
+   hidden=3 seed=22 float_acc=0.520 near_int=0.87
+   hidden=3 seed=23 float_acc=0.800 near_int=0.91
+   hidden=3: 1/24 seeds reach 100% float accuracy (33s)
+   -> exporting hidden=3 seed=9 (near_int=0.91)

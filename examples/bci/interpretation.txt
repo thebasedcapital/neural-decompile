@@ -1,0 +1,31 @@
+== Held-out evaluation (n=25, never touched during model/hyperparameter selection) ==
+majority-class baseline accuracy: 0.360 (always predicts class 1)
+float model accuracy:             0.840
+quantized (eps=0.15) accuracy:    0.840  <- this is what nd verify runs
+float vs quantized agreement:      1.000
+emitted Python vs model agreement: 1.000
+
+== Unit dropout sensitivity (diagnostic only; computed once, not used to pick a model) ==
+Zeroing one input channel (one selected DANDI spike unit) at a time across every timestep
+of every held-out trial, re-running the frozen QUANTIZED weights (the ones nd actually runs).
+'unit dropout', not 'electrode death': unit_id is a DANDI units-table row id, not a validated
+electrode/channel location on a probe geometry.
+  channel  0 (DANDI unit  1651): acc 0.600  delta -0.240
+  channel  1 (DANDI unit  1201): acc 0.720  delta -0.120
+  channel  2 (DANDI unit  2771): acc 0.840  delta +0.000
+  channel  3 (DANDI unit  1131): acc 0.680  delta -0.160
+  channel  4 (DANDI unit  1141): acc 0.840  delta +0.000
+  channel  5 (DANDI unit  1101): acc 0.840  delta +0.000
+  channel  6 (DANDI unit  1581): acc 0.840  delta +0.000
+  channel  7 (DANDI unit  1092): acc 0.800  delta -0.040
+  channel  8 (DANDI unit  1091): acc 0.840  delta +0.000
+  channel  9 (DANDI unit  1031): acc 0.840  delta +0.000
+  channel 10 (DANDI unit  1191): acc 0.840  delta +0.000
+  channel 11 (DANDI unit  1171): acc 0.880  delta +0.040
+  channel 12 (DANDI unit  1251): acc 0.800  delta -0.040
+  channel 13 (DANDI unit  1371): acc 0.840  delta +0.000
+  channel 14 (DANDI unit  1342): acc 0.720  delta -0.120
+  channel 15 (DANDI unit  2021): acc 0.920  delta +0.080
+
+most sensitive channel: 0 (DANDI unit 1651), dropping it alone changes held-out accuracy by -0.240
+8/16 channels leave accuracy unchanged when individually zeroed. Equal accuracy does not establish identical predictions or joint redundancy.

@@ -152,7 +152,7 @@ pub fn analyze(
 
         // Compute per-neuron residual (how far from pure integer)
         let mut residuals = vec![0.0_f64; hd];
-        for i in 0..hd {
+        for (i, residual) in residuals.iter_mut().enumerate() {
             let mut res = 0.0;
             for j in 0..hd {
                 let v = q.w_hh[[i, j]];
@@ -163,7 +163,7 @@ pub fn analyze(
                 res += (v - v.round()).abs();
             }
             res += (q.b_h[i] - q.b_h[i].round()).abs();
-            residuals[i] = res;
+            *residual = res;
         }
 
         frames.push(Frame {
@@ -204,14 +204,13 @@ pub fn format_evolve(report: &EvolutionReport) -> String {
 
     // Show key frames: first, phase transitions, convergence, last
     let mut prev_phase = String::new();
-    let mut shown = 0;
     for (idx, f) in report.frames.iter().enumerate() {
         let is_first = idx == 0;
         let is_last = idx == report.frames.len() - 1;
         let phase_change = f.phase != prev_phase;
         let is_milestone = f.accuracy >= 1.0 && (idx == 0 || report.frames[idx - 1].accuracy < 1.0);
 
-        if is_first || is_last || phase_change || is_milestone || shown % 8 == 0 {
+        if is_first || is_last || phase_change || is_milestone || idx % 8 == 0 {
             let phase_short = if f.phase.len() > 8 {
                 &f.phase[..8]
             } else {
@@ -242,7 +241,6 @@ pub fn format_evolve(report: &EvolutionReport) -> String {
 
             prev_phase = f.phase.clone();
         }
-        shown += 1;
     }
 
     // Summary
