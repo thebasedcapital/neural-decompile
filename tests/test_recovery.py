@@ -115,40 +115,28 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.smooth(values, 1.5)
 
-    def test_blend_patch_reconstructs_average_of_parts(self):
-        rng = np.random.default_rng(412)
-        channels, outputs = 6, 7
-        decoder = m.Decoder(
-            rng.normal(size=channels), np.linspace(.5, 2., channels),
-            rng.normal(size=outputs), np.linspace(.3, 3., outputs),
-            rng.normal(size=(channels + 1, outputs)),
-            rng.normal(size=(3, channels + 1, outputs)),
-        )
-        raw = rng.normal(size=(300, channels)) * decoder.scale + decoder.mean
-        targets = decoder.predict(raw)
-        fitted, count, _, patch = m.adapt(decoder, raw, targets, raw, m.BLEND_METHOD, 10.)
-        self.assertEqual(count, decoder.weights.size)
-        restored = m.apply_patch(decoder, m.BLEND_METHOD, patch)
-        np.testing.assert_allclose(restored, fitted, rtol=1e-12, atol=1e-12)
-        recentered = m.adapt(decoder, raw, targets, raw, "recenter", 0.)[0]
-        repaired = m.adapt(decoder, raw, targets, raw, m.REPAIR_METHOD, 10.)[0]
-        np.testing.assert_allclose(fitted, 0.5 * (recentered + repaired), rtol=1e-12, atol=1e-12)
+    def test_running_zscore_is_causal_and_forgets_a_baseline_shift(self):
+        rng = np.random.default_rng(5)
+        features = rng.normal(size=(6000, 3))
+        features[3000:] += 50.0  # recording-level offset, e.g. electrode drift
+        mean, variance = m.prefix_statistics(features[:1500])
+        z = m.running_zscore(features, mean, variance, tau_s=10., bin_ms=20)
+        changed = features.copy()
+        changed[4000:] -= 999.0
+        np.testing.assert_array_equal(m.running_zscore(changed, mean, variance, 10., 20)[:4000], z[:4000])
+        self.assertGreater(np.abs(z[3000]).min(), 10.)  # the shift is visible at first...
+        self.assertLess(np.abs(z[-1000:].mean(axis=0)).max(), 0.2)  # ...then absorbed after ~5 tau
         with self.assertRaises(ValueError):
-            m.apply_patch(decoder, m.BLEND_METHOD, patch[:-1])
+            m.running_zscore(features, mean, variance, tau_s=0.02, bin_ms=20)
 
-    def test_alpha_overrides_are_targeted_and_recorded(self):
-        choices = {"three_source_separate_bias_rank_6_repair": {"30": 1.0, "45": 1.0},
-                   "anchored": {"30": 1.0}}
-        protocol = {"reused_data_alpha_overrides": {"three_source_separate_bias_rank_6_repair": {"30": 30.0}}}
-        applied = ex.apply_alpha_overrides(protocol, choices)
-        self.assertEqual(choices["three_source_separate_bias_rank_6_repair"]["30"], 30.0)
-        self.assertEqual(choices["three_source_separate_bias_rank_6_repair"]["45"], 1.0)
-        self.assertEqual(choices["anchored"]["30"], 1.0)
-        self.assertEqual(applied, {"three_source_separate_bias_rank_6_repair@30s": 30.0})
-        with self.assertRaises(ValueError):
-            ex.apply_alpha_overrides({"reused_data_alpha_overrides": {"missing_method": {"30": 1.}}}, choices)
-        with self.assertRaises(ValueError):
-            ex.apply_alpha_overrides({"reused_data_alpha_overrides": {"anchored": {"99": 1.}}}, choices)
+    def test_silent_prefix_channel_cannot_explode_when_it_wakes(self):
+        features = np.zeros((200, 2))
+        features[:, 1] = np.arange(200) % 2
+        mean, variance = m.prefix_statistics(features[:100])
+        self.assertEqual(variance[0], 1.0)
+        features[150:, 0] = 1.0
+        z = m.running_zscore(features, mean, variance, tau_s=30., bin_ms=20)
+        self.assertLess(np.abs(z[:, 0]).max(), 2.0)
 
 
 if __name__ == "__main__":

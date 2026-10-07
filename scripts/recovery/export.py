@@ -19,15 +19,21 @@ use std::io::{self, BufRead, Write};
 struct Decoder {
     history: [[f64; CHANNELS]; TAPS],
     cursor: usize,
+    model: usize,
+    mean: [f64; FEATURES],
+    variance: [f64; FEATURES],
     smoothed: [f64; 7],
     started: bool,
 }
 impl Decoder {
-    fn new() -> Self { Self { history: [[0.0; CHANNELS]; TAPS], cursor: 0, smoothed: [0.0; 7], started: false } }
-    fn step(&mut self, input: [f64; CHANNELS], model: usize) -> [f64; 7] {
+    fn new(model: usize) -> Self {
+        Self { history: [[0.0; CHANNELS]; TAPS], cursor: 0, model, mean: ZSCORE_MEAN[model],
+               variance: ZSCORE_VARIANCE[model], smoothed: [0.0; 7], started: false }
+    }
+    fn step(&mut self, input: [f64; CHANNELS]) -> [f64; 7] {
         self.history[self.cursor] = input;
         self.cursor = (self.cursor + 1) % TAPS;
-        let mut output = BIAS[model];
+        let mut output = BIAS[self.model];
         for (tau, kernel) in KERNELS.iter().enumerate() {
             let length = KERNEL_LENGTHS[tau];
             let mut rates = [0.0; CHANNELS];
@@ -37,9 +43,15 @@ impl Decoder {
                 for (rate, count) in rates.iter_mut().zip(row) { *rate += weight * count; }
             }
             let offset = tau * CHANNELS;
-            for (feature, rate) in rates.iter().enumerate() {
-                let row = &WEIGHTS[model][offset + feature];
-                for (value, coefficient) in output.iter_mut().zip(row) { *value += rate * coefficient; }
+            for (channel, rate) in rates.iter().enumerate() {
+                // Causal running z-score: label-free, updated with the current bin.
+                let feature = offset + channel;
+                let delta = rate - self.mean[feature];
+                self.mean[feature] += ZSCORE_K * delta;
+                self.variance[feature] = (1.0 - ZSCORE_K) * (self.variance[feature] + ZSCORE_K * delta * delta);
+                let z = (rate - self.mean[feature]) / self.variance[feature].max(1e-8).sqrt();
+                let row = &WEIGHTS[self.model][feature];
+                for (value, coefficient) in output.iter_mut().zip(row) { *value += z * coefficient; }
             }
         }
         // Causal exponential smoothing; resets on decoder construction.
@@ -64,16 +76,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stdout = io::stdout();
     let mut writer = io::BufWriter::new(stdout.lock());
     let mut line = String::with_capacity(CHANNELS * 24);
-    let mut decoder = Decoder::new();
-    let mut model = 0;
+    let mut decoder = Decoder::new(0);
     loop {
         line.clear();
         if reader.read_line(&mut line)? == 0 { break; }
         if line.trim().is_empty() { continue; }
         if let Some(rest) = line.trim().strip_prefix("reset ") {
-            model = rest.parse::<usize>()?;
+            let model = rest.parse::<usize>()?;
             if model >= MODELS { return Err("model index out of range".into()); }
-            decoder = Decoder::new();
+            decoder = Decoder::new(model);
             continue;
         }
         let mut fields = line.split_whitespace();
@@ -83,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !count.is_finite() || *count < 0.0 { return Err("invalid neural count".into()); }
         }
         if fields.next().is_some() { return Err("too many neural channels".into()); }
-        let values = decoder.step(counts, model);
+        let values = decoder.step(counts);
         for (index, value) in values.iter().enumerate() {
             if index > 0 { write!(writer, " ")?; }
             write!(writer, "{value:.17}")?;
@@ -122,17 +133,21 @@ def compile_and_validate(decoder, models, cases, protocol, destination):
     taps = max(lengths)
     padded = [row + [0.0] * (taps - len(row)) for row in kernels]
     beta = protocol["output_smoothing"]["beta"]
+    k = bin_ms / 1000 / protocol["front_end"]["tau_seconds"]
     source = "// Generated from pinned human-data model and serialized compact patches.\n"
-    source += "// Offline research only. Input: reset MODEL_ID, then one row of neural counts per20ms bin.\n"
+    source += "// Offline research only. Input: reset MODEL_ID, then one row of neural counts per 20 ms bin.\n"
     for index, model in enumerate(models):
         source += f"// Model {index}: obfuscated day {model['day']}, {model['method']}, {model['budget_seconds']}s calibration.\n"
     source += f"const CHANNELS: usize = {cases[0][1].shape[1]};\nconst TAPS: usize = {taps};\nconst MODELS: usize = {len(models)};\n"
     source += f"const KERNELS: [[f64; TAPS]; {len(taus)}] = {json.dumps(padded)};\n"
     source += f"const KERNEL_LENGTHS: [usize; {len(taus)}] = {json.dumps(lengths)};\n"
     source += f"const SMOOTH_BETA: f64 = {beta!r};\n"
+    source += f"const ZSCORE_K: f64 = {k!r};\n"
     source += f"const FEATURES: usize = {len(decoder.mean)};\n"
     source += f"static WEIGHTS: [[[f64; 7]; FEATURES]; MODELS] = {json.dumps(slopes)};\n"
     source += f"static BIAS: [[f64; 7]; MODELS] = {json.dumps(biases)};\n"
+    source += f"static ZSCORE_MEAN: [[f64; FEATURES]; MODELS] = {json.dumps([m['zscore_mean'] for m in models])};\n"
+    source += f"static ZSCORE_VARIANCE: [[f64; FEATURES]; MODELS] = {json.dumps([m['zscore_variance'] for m in models])};\n"
     destination.write_text(source + RUNTIME)
     stream = io.StringIO()
     for model_id, counts, _ in cases:

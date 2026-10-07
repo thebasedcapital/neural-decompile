@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Select only on earlier days, freeze the selection, then evaluate later days."""
+"""Select only on earlier days, freeze the selection, then evaluate later days.
+
+Development folds cross a recording boundary exactly like the later-day split:
+calibrate on the first recording of a held-in day, evaluate on its second.
+Every method sees features through the same label-free causal running z-score.
+"""
 import argparse
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -11,11 +16,12 @@ import time
 import numpy as np
 
 from data import load_sessions, prepare
-from model import (BLEND_METHOD, METHODS, REPAIR_METHOD, adapt, fit_base, score,
+from model import (METHODS, adapt, fit_base, prefix_statistics, running_zscore, score,
                    smooth, stacked_features)
 
 ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL = ROOT / "examples/recovery/protocol.json"
+PREREGISTRATION = ROOT / "examples/recovery/preregistration-2026-10-07.json"
 RESULTS = ROOT / "results"
 
 
@@ -37,6 +43,35 @@ def group_days(sessions, protocol):
         features = stacked_features(session.counts, protocol["bin_ms"], taus)
         groups[session.day].append((session, features))
     return dict(sorted(groups.items()))
+
+
+def zscore_blocks(blocks, statistics, protocol):
+    """Apply the shared front-end to each recording, restarting from `statistics`."""
+    tau, bin_ms = protocol["front_end"]["tau_seconds"], protocol["bin_ms"]
+    return [(s, running_zscore(features, *statistics, tau, bin_ms)) for s, features in blocks]
+
+
+def zscore_training(days, protocol):
+    """Source recordings start from their own label-free opening statistics."""
+    bins = round(protocol["front_end"]["source_init_seconds"] * 1000 / protocol["bin_ms"])
+    return {day: [block for s, features in blocks
+                  for block in zscore_blocks([(s, features)], prefix_statistics(features[:bins]), protocol)]
+            for day, blocks in days.items()}
+
+
+def pooled_statistics(days):
+    """Zero-budget initialization: source-recording statistics, no new-day data."""
+    return prefix_statistics(np.concatenate([features for blocks in days.values() for _, features in blocks]))
+
+
+def front_end(calibration_raw, evaluation_raw, budget, fallback, protocol):
+    """Initialize from the budget's calibration prefix (all bins, no labels)."""
+    if budget:
+        statistics = prefix_statistics(calibration_prefix(calibration_raw, budget, protocol["bin_ms"])[2])
+    else:
+        statistics = fallback
+    return (zscore_blocks(calibration_raw, statistics, protocol),
+            zscore_blocks(evaluation_raw, statistics, protocol), statistics)
 
 
 def smoothed_scores(decoder, blocks, weights, beta):
@@ -73,87 +108,71 @@ def calibration_prefix(blocks, seconds, bin_ms):
     return np.concatenate(xs), np.concatenate(ys), np.concatenate(all_x)
 
 
-def apply_alpha_overrides(protocol, choices):
-    """Leaderboard-informed alpha reselection, disclosed in protocol.json.
-
-    The only permitted later-day-informed tuning: reselect a deployed
-    adaptation alpha from previously observed evaluation results. Every
-    affected result must be reported as reused-data evidence.
-    """
-    applied = {}
-    for method, by_budget in protocol.get("reused_data_alpha_overrides", {}).items():
-        for budget_s, alpha in by_budget.items():
-            if method not in choices or budget_s not in choices[method]:
-                raise ValueError(f"Override target not in frozen selection: {method} {budget_s}")
-            choices[method][budget_s] = alpha
-            applied[f"{method}@{budget_s}s"] = alpha
-            print(f"OVERRIDE {method} {budget_s}s alpha={alpha} (leaderboard-informed, reused data)", flush=True)
-    return applied
-
-
-def choose(protocol, training, validation):
+def choose(protocol, training):
+    """Cross-recording forward folds on held-in days only."""
     days = sorted(training)
     if len(days) < 4:
         raise ValueError("Forward-day selection requires at least four held-in days")
+    normalized = zscore_training(training, protocol)
+    budgets = protocol["calibration_budgets_seconds"]
+    primary = protocol["primary_budget_seconds"]
     folds = []
     for index in range(3, len(days)):
         day = days[index]
-        train = {d: scored_rows(training[d]) for d in days[:index]}
-        folds.append((day, train, validation[day]))
+        if len(training[day]) < 2:
+            raise ValueError(f"Cross-recording fold {day} needs two recordings")
+        source = {d: training[d] for d in days[:index]}
+        fallback = pooled_statistics(source)
+        views = {budget: front_end(training[day][:1], training[day][1:], budget, fallback, protocol)
+                 for budget in budgets}
+        folds.append((day, {d: scored_rows(normalized[d]) for d in days[:index]}, views))
     beta = protocol["output_smoothing"]["beta"]
     base_results, base_cache = [], {}
     for alpha in protocol["base_ridge_alphas"]:
         scores = []
-        for day, train, blocks in folds:
+        for day, train, views in folds:
             decoder = fit_base(train, alpha)
             base_cache[alpha, day] = decoder
-            scores.append(smoothed_scores(decoder, blocks, decoder.weights, beta)[0])
+            scores.append(smoothed_scores(decoder, views[primary][1], decoder.weights, beta)[0])
         base_results.append({"alpha": alpha, "mean_r2": float(np.mean(scores)), "day_scores": scores})
-    base_alpha = max(base_results, key=lambda row: row["mean_r2"])["alpha"]
-    print(f"SOURCE selection: base alpha={base_alpha}", flush=True)
+    # Fixed by the pre-registration, not selected here: the fold table above is
+    # reported as a diagnostic (see protocol.json "base_ridge_alpha").
+    base_alpha = protocol["base_ridge_alpha"]
+    print(f"SOURCE base alpha={base_alpha} (pre-registered); fold diagnostics: "
+          + " ".join(f"{r['alpha']:g}:{r['mean_r2']:.4f}" for r in base_results), flush=True)
     choices, validation_rows = {}, []
     for method in [m["id"] for m in METHODS]:
         choices[method] = {}
-        for budget in protocol["calibration_budgets_seconds"]:
+        for budget in budgets:
             alphas = [0.] if method in ("frozen", "recenter") or budget == 0 else protocol["adaptation_alphas"]
             candidates = []
             for alpha in alphas:
                 scores = []
-                for day, _, blocks in folds:
+                for day, _, views in folds:
                     decoder = base_cache[base_alpha, day]
-                    cx, cy, all_x = calibration_prefix(training[day], budget, protocol["bin_ms"])
+                    calibration, evaluation, _ = views[budget]
+                    cx, cy, all_x = calibration_prefix(calibration, budget, protocol["bin_ms"])
                     weights, _, _, _ = adapt(decoder, cx, cy, all_x, method, alpha)
-                    scores.append({"day": day, "r2": smoothed_scores(decoder, blocks, weights, beta)[0]})
+                    scores.append({"day": day, "r2": smoothed_scores(decoder, evaluation, weights, beta)[0]})
                 candidates.append({"method": method, "budget_seconds": budget, "alpha": alpha,
                                    "mean_r2": float(np.mean([s["r2"] for s in scores])), "day_scores": scores})
             best = max(candidates, key=lambda row: row["mean_r2"])
             choices[method][str(budget)] = best["alpha"]
             validation_rows.extend(candidates)
             print(f"SOURCE {method:14} {budget:2}s alpha={best['alpha']:7g} R2={best['mean_r2']:.4f}", flush=True)
-    budget = protocol["primary_budget_seconds"]
-    applied_overrides = apply_alpha_overrides(protocol, choices)
-    eligible = [r for r in validation_rows if r["budget_seconds"] == budget]
-    candidate = max((r for r in eligible if r["method"] in protocol["candidate_methods"]), key=lambda r: r["mean_r2"])
-    deployed = protocol.get("reused_data_deployed_candidate")
-    if deployed:
-        if deployed not in protocol["candidate_methods"]:
-            raise ValueError(f"Deployed candidate is not an admitted candidate: {deployed}")
-        print(f"OVERRIDE deployed candidate={deployed} (leaderboard-informed, reused data)", flush=True)
-        # Validation rows record dev-optimal alphas only; the deployed alpha
-        # comes from the override and is recorded in choices and overrides.
-        template = next(r for r in eligible if r["method"] == deployed)
-        candidate = dict(template, alpha=choices[deployed][str(budget)])
-    baseline = max((r for r in eligible if r["method"] in protocol["baseline_methods"]), key=lambda r: r["mean_r2"])
-    source_candidate = max((r for r in eligible if r["method"] in protocol["candidate_methods"]), key=lambda r: r["mean_r2"])
+    best_rows = [r for r in validation_rows if r["budget_seconds"] == primary
+                 and r["alpha"] == choices[r["method"]][str(primary)]]
+    source_best = max((r for r in best_rows if r["method"] in protocol["candidate_methods"]), key=lambda r: r["mean_r2"])
+    baseline = max((r for r in best_rows if r["method"] in protocol["baseline_methods"]), key=lambda r: r["mean_r2"])
     return {"base_alpha": base_alpha, "adaptation_alphas": choices,
-            "reused_data_alpha_overrides": applied_overrides,
-            "reused_data_deployed_candidate": protocol.get("reused_data_deployed_candidate"),
-            "source_selected_candidate": source_candidate["method"],
-            "later_day_labels_used_for_selection": bool(applied_overrides or deployed),
-            "method": candidate["method"], "baseline": baseline["method"],
-            "budget_seconds": budget, "base_validation": base_results,
+            "later_day_labels_used_for_selection": False,
+            "method": protocol["primary_candidate"], "baseline": baseline["method"],
+            "source_best_candidate": source_best["method"],
+            "budget_seconds": primary, "base_validation": base_results,
             "validation": validation_rows, "fold_days": [f[0] for f in folds],
+            "fold_design": "cross-recording: calibrate on recording 1, evaluate on recording 2 of the same held-in day",
             "protocol_sha256": digest(PROTOCOL),
+            "preregistration_sha256": digest(PREREGISTRATION),
             "model_sha256": digest(Path(__file__).with_name("model.py")),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "later_day_evaluation_previously_observed": True}
@@ -163,43 +182,45 @@ def display_array(array):
     return [[round(float(v), 6) if np.isfinite(v) else None for v in row] for row in array]
 
 
-def evaluate(protocol, selection, decoder, calibration, evaluation):
+def evaluate(protocol, selection, decoder, calibration, evaluation, fallback):
     sessions, compiled_models, compiled_cases = [], [], []
     budgets = protocol["calibration_budgets_seconds"]
     step = 5
-    for day, blocks in evaluation.items():
-        day_scores, predictions, full_predictions = [], {}, {}
-        prefixes = {budget: calibration_prefix(calibration[day], budget, protocol["bin_ms"]) for budget in budgets}
+    for day, raw_blocks in evaluation.items():
+        day_scores, predictions = [], {}
+        views = {budget: front_end(calibration[day], raw_blocks, budget, fallback, protocol) for budget in budgets}
+        prefixes = {budget: calibration_prefix(views[budget][0], budget, protocol["bin_ms"]) for budget in budgets}
         beta = protocol["output_smoothing"]["beta"]
         for method in [m["id"] for m in METHODS]:
             predictions[method] = {}
             for budget in budgets:
+                blocks = views[budget][1]
                 alpha = selection["adaptation_alphas"][method][str(budget)]
                 weights, count, milliseconds, patch = adapt(decoder, *prefixes[budget], method, alpha)
                 # The smoother is part of the deployed decoder: applied to every
                 # bin of each block, reset at recording boundaries, before masking.
                 block_predictions = [decoder.predict(features, weights) if beta >= 1 else smooth(decoder.predict(features, weights), beta)
                                      for _, features in blocks]
-                vx = np.concatenate([f[s.mask] for s, f in blocks])
                 vy = np.concatenate([s.targets[s.mask] for s, _ in blocks])
                 predicted = np.concatenate([p[s.mask] for p, (s, _) in zip(block_predictions, blocks)])
                 r2, per_output = score(vy, predicted)
                 day_scores.append({"method": method, "budget_seconds": budget, "r2": r2,
                                    "per_dimension_r2": per_output, "fit_ms": milliseconds,
                                    "adapted_parameters": count, "scored_calibration_bins": len(prefixes[budget][0])})
-                if method != "frozen" or budget == 0:
-                    predictions[method][str(budget)] = display_array(np.concatenate([p[::step] for p in block_predictions]))
+                predictions[method][str(budget)] = display_array(np.concatenate([p[::step] for p in block_predictions]))
                 if method == selection["method"] and budget == selection["budget_seconds"]:
                     slope, bias = decoder.folded(weights)
+                    mean, variance = views[budget][2]
                     model_id = len(compiled_models)
                     compiled_models.append({"day": day, "method": method, "budget_seconds": budget,
-                                            "slope": slope, "bias": bias, "patch": patch})
-                    for block_index, (session, features) in enumerate(blocks):
+                                            "slope": slope, "bias": bias, "patch": patch,
+                                            "zscore_mean": mean.tolist(), "zscore_variance": variance.tolist()})
+                    for block_index, (session, _) in enumerate(raw_blocks):
                         compiled_cases.append((model_id, session.counts, block_predictions[block_index]))
             print(f"EVAL {day} {method:14} " + " ".join(f"{r['budget_seconds']}s:{r['r2']:.4f}" for r in day_scores if r['method'] == method), flush=True)
         truth, masks, breaks, seconds = [], [], [], []
         offset = 0.
-        for s, features in blocks:
+        for s, features in raw_blocks:
             indices = np.arange(0, len(features), step)
             truth.extend(display_array(s.targets[indices]))
             masks.extend(s.mask[indices].tolist())
@@ -207,7 +228,7 @@ def evaluate(protocol, selection, decoder, calibration, evaluation):
             seconds.extend((offset + indices * protocol["bin_ms"] / 1000).tolist())
             offset += len(features) * protocol["bin_ms"] / 1000
         sessions.append({"day": day, "calibration_seconds": sum(len(f) for _, f in calibration[day]) * protocol["bin_ms"] / 1000,
-                         "n_channels": len(decoder.mean), "scores": day_scores,
+                         "n_channels": raw_blocks[0][0].counts.shape[1], "scores": day_scores,
                          "replay": {"dt_seconds": step * protocol["bin_ms"] / 1000, "seconds": seconds,
                                     "mask": masks, "breaks": breaks, "truth": truth, "predictions": predictions}})
     summary = []
@@ -228,16 +249,16 @@ def main():
     args = parser.parse_args()
     protocol = json.loads(PROTOCOL.read_text())
     prepare()
-    development = load_sessions(("held-in-calib", "held-in-minival"))
-    training = group_days([s for s in development if s.split == "held-in-calib"], protocol)
-    validation = group_days([s for s in development if s.split == "held-in-minival"], protocol)
-    selection = choose(protocol, training, validation)
+    development = load_sessions(("held-in-calib",))
+    training = group_days(development, protocol)
+    selection = choose(protocol, training)
     selection_path = RESULTS / "recovery-selection.json"
     save_json(selection_path, selection)
     print(f"FROZEN selection: {selection['method']} versus {selection['baseline']} at {selection['budget_seconds']}s; {digest(selection_path)}", flush=True)
     if args.selection_only:
         return
-    decoder = fit_base({day: scored_rows(blocks) for day, blocks in training.items()}, selection["base_alpha"])
+    decoder = fit_base({day: scored_rows(blocks) for day, blocks in zscore_training(training, protocol).items()},
+                       selection["base_alpha"])
     # Current selection is frozen before loading later-day targets. These
     # recordings were evaluated previously; this run is reused-data evidence.
     later_days = group_days(load_sessions(("held-out-calib",)), protocol)
@@ -245,12 +266,13 @@ def main():
         raise ValueError("Expected exactly two pinned recording blocks per later day")
     calibration = {day: blocks[:1] for day, blocks in later_days.items()}
     evaluation = {day: blocks[1:] for day, blocks in later_days.items()}
-    sessions, summary, models, cases = evaluate(protocol, selection, decoder, calibration, evaluation)
+    sessions, summary, models, cases = evaluate(protocol, selection, decoder, calibration, evaluation,
+                                                pooled_statistics(training))
     from export import compile_and_validate
     compiled = compile_and_validate(decoder, models, cases, protocol, RESULTS / "recovery_decoder.rs")
     payload = {
-        "schema_version": 2,
-        "evaluation_evidence": "Reused-data reevaluation, not a fresh holdout. These later-day results were inspected previously. Repair optimization and method selection used only three earlier-day forward-development folds; the primary candidate's 30-second adaptation alpha was reselected from the previously observed later-day results and is disclosed in recovery-selection.json under reused_data_alpha_overrides.",
+        "schema_version": 3,
+        "evaluation_evidence": "Reused-data reevaluation, not a fresh holdout: earlier pipelines inspected these later-day recordings. This pipeline's method, alphas, and front-end were selected on held-in cross-recording folds only and pre-registered (examples/recovery/preregistration-2026-10-07.json) before any later-day score was computed for them; no later-day labels were used for selection.",
         "dataset": {"name": "FALCON H1", "subject": "One deidentified human participant",
                     "task": "Seven-dimensional cued reach and grasp",
                     "source_url": "https://dandiarchive.org/dandiset/000954/draft", "bin_ms": protocol["bin_ms"],

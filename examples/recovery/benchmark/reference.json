@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "budget_seconds": 30,
   "base_alpha": 1.0,
   "alphas": [
@@ -8,9 +8,19 @@
     0.1,
     1.0,
     10.0,
-    100.0
+    30.0,
+    100.0,
+    300.0,
+    1000.0,
+    3000.0
   ],
   "smoothing_beta": 0.1,
+  "front_end": {
+    "type": "causal running z-score",
+    "tau_seconds": 30.0,
+    "source_init_seconds": 30,
+    "note": "Every method sees each feature as (x - mu) / sqrt(var) with mu, var updated on every bin with forgetting factor k = bin / tau. New-day recordings start from the label-free statistics of the calibration prefix (all bins); the zero-second budget starts from pooled source statistics. Source recordings start from their own first 30 s. Pre-registered in preregistration-2026-10-07.json."
+  },
   "baseline_methods": [
     "frozen",
     "recenter",
@@ -23,19 +33,19 @@
       "method": "frozen",
       "budget_seconds": 30,
       "alpha": 0.0,
-      "mean_r2": 0.17202527943901133,
+      "mean_r2": 0.2647503221545433,
       "day_scores": [
         {
           "day": "19250115",
-          "r2": 0.17688283418584003
+          "r2": 0.25455031085416713
         },
         {
           "day": "19250119",
-          "r2": 0.1661952344878626
+          "r2": 0.2825483003838094
         },
         {
           "day": "19250120",
-          "r2": 0.17299776964333133
+          "r2": 0.25715235522565344
         }
       ]
     },
@@ -43,79 +53,79 @@
       "method": "recenter",
       "budget_seconds": 30,
       "alpha": 0.0,
-      "mean_r2": 0.2067786066461321,
+      "mean_r2": 0.26672206475988297,
       "day_scores": [
         {
           "day": "19250115",
-          "r2": 0.20870765565769533
+          "r2": 0.25579595837229907
         },
         {
           "day": "19250119",
-          "r2": 0.22264581700507396
+          "r2": 0.28585862346925195
         },
         {
           "day": "19250120",
-          "r2": 0.18898234727562693
+          "r2": 0.258511612438098
         }
       ]
     },
     {
       "method": "scratch",
       "budget_seconds": 30,
-      "alpha": 1.0,
-      "mean_r2": 0.28988823259021945,
+      "alpha": 10.0,
+      "mean_r2": 0.056565238520597465,
       "day_scores": [
         {
           "day": "19250115",
-          "r2": 0.2573917142880633
+          "r2": 0.05657730321322119
         },
         {
           "day": "19250119",
-          "r2": 0.27146238282065543
+          "r2": 0.04980738059400085
         },
         {
           "day": "19250120",
-          "r2": 0.34081060066193963
+          "r2": 0.06331103175457034
         }
       ]
     },
     {
       "method": "anchored",
       "budget_seconds": 30,
-      "alpha": 1.0,
-      "mean_r2": 0.3673711569946749,
+      "alpha": 100.0,
+      "mean_r2": 0.26313479038273296,
       "day_scores": [
         {
           "day": "19250115",
-          "r2": 0.33884855125376506
+          "r2": 0.2535952183039168
         },
         {
           "day": "19250119",
-          "r2": 0.37322359171940345
+          "r2": 0.27802466560351935
         },
         {
           "day": "19250120",
-          "r2": 0.39004132801085617
+          "r2": 0.25778448724076264
         }
       ]
     },
     {
       "method": "output_affine",
       "budget_seconds": 30,
-      "alpha": 1.0,
-      "mean_r2": 0.21039842161978886,
+      "alpha": 3000.0,
+      "mean_r2": 0.26146489969057546,
       "day_scores": [
         {
           "day": "19250115",
-          "r2": 0.21870039786987988
+          "r2": 0.2517218252086487
         },
         {
           "day": "19250119",
-          "r2": 0.21799300422865056
+          "r2": 0.27637284082692315
         },
         {
           "day": "19250120",
-          "r2": 0.19450186276083614
+          "r2": 0.2563000330361544
         }
       ]
     }
@@ -124,7 +134,7 @@
     {
       "day": "19250115",
       "file": "19250115.npz",
-      "sha256": "50e2042a4d4260ed6a711aa0e458a521e16a7c8c01d85278b728ce40962d6428",
+      "sha256": "e89dd6126884e60e600c55a4fc9326ce7410c948c1f72437328a7588b746cfa8",
       "training_days": [
         "19250101",
         "19250108",
@@ -132,20 +142,18 @@
       ],
       "calibration_bins": 1500,
       "scored_calibration_bins": 1442,
-      "evaluation_bins": 2987,
+      "evaluation_bins": 11980,
       "calibration_files": [
-        "sub-HumanPitt-held-in-calib_ses-19250115T110633",
-        "sub-HumanPitt-held-in-calib_ses-19250115T111328"
+        "sub-HumanPitt-held-in-calib_ses-19250115T110633"
       ],
       "evaluation_files": [
-        "sub-HumanPitt-held-in-minival_ses-19250115T110633",
-        "sub-HumanPitt-held-in-minival_ses-19250115T111328"
+        "sub-HumanPitt-held-in-calib_ses-19250115T111328"
       ]
     },
     {
       "day": "19250119",
       "file": "19250119.npz",
-      "sha256": "6b44196b80cc67b2fe144efc078cb1d61e1cf35821320f326f0a6957464b154d",
+      "sha256": "55aa7e7225cd604e10061edbd1ef3666a42327eae8f6a00324b79f8fb4be0291",
       "training_days": [
         "19250101",
         "19250108",
@@ -154,20 +162,18 @@
       ],
       "calibration_bins": 1500,
       "scored_calibration_bins": 1443,
-      "evaluation_bins": 3132,
+      "evaluation_bins": 11711,
       "calibration_files": [
-        "sub-HumanPitt-held-in-calib_ses-19250119T113543",
-        "sub-HumanPitt-held-in-calib_ses-19250119T114045"
+        "sub-HumanPitt-held-in-calib_ses-19250119T113543"
       ],
       "evaluation_files": [
-        "sub-HumanPitt-held-in-minival_ses-19250119T113543",
-        "sub-HumanPitt-held-in-minival_ses-19250119T114045"
+        "sub-HumanPitt-held-in-calib_ses-19250119T114045"
       ]
     },
     {
       "day": "19250120",
       "file": "19250120.npz",
-      "sha256": "4611c7eb91216c0a2b0a2274a59a9510cec20394e8def9f4e954ce73ec2af7cd",
+      "sha256": "081400d7a1cc579ad2596f0a8afc11112be173db51b3e11479fc51e13d140a79",
       "training_days": [
         "19250101",
         "19250108",
@@ -177,18 +183,16 @@
       ],
       "calibration_bins": 1500,
       "scored_calibration_bins": 1436,
-      "evaluation_bins": 2952,
+      "evaluation_bins": 11139,
       "calibration_files": [
-        "sub-HumanPitt-held-in-calib_ses-19250120T115044",
-        "sub-HumanPitt-held-in-calib_ses-19250120T115537"
+        "sub-HumanPitt-held-in-calib_ses-19250120T115044"
       ],
       "evaluation_files": [
-        "sub-HumanPitt-held-in-minival_ses-19250120T115044",
-        "sub-HumanPitt-held-in-minival_ses-19250120T115537"
+        "sub-HumanPitt-held-in-calib_ses-19250120T115537"
       ]
     }
   ],
-  "protocol_sha256": "39cced95dce0271dda25249d7031452c1f3e490011484ecc6893b08c6ec553a3",
-  "original_selection_sha256": "c8253b5078691134756700ed0555138839cdd74f26df5d9df02b7d22a3dbd82a",
-  "scope": "Development-only optimization on three earlier-day forward folds. Previously inspected later-day recordings are excluded; this is not a new holdout claim."
+  "protocol_sha256": "7e40660a26695d53cdc22bdebbf021e03787ce3628c94e7f2304d636874e483c",
+  "original_selection_sha256": "11c3c07d1b53f6717d5fc1800ffb7d1deab0445e853700e02642bb8ceb9d7e31",
+  "scope": "Development-only optimization on three cross-recording held-in folds (calibrate on recording 1, evaluate on recording 2); features are stored after the label-free running z-score. Later-day recordings are never opened."
 }

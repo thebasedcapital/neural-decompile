@@ -4,21 +4,19 @@
 
 | Deliverable | Status | Evidence |
 |---|---|---|
-| Linear repair (deployed blend) | **Done, winning** | Later days 0.167012 vs recenter 0.153511 (+0.013502); dev +0.023366; Rust parity 1.21e-17 / 17,233 bins; commits `86b5bf9`, `2acd552` |
-| Decompiler verification honesty + transformer emitter | Done | `cargo test` 12+4 pass; nonzero exits, eps threaded, 6 block biases, generated Rust compiles |
-| GRU hypertune pipeline | **Built, smoke-tested** | `preprocess_training.py` → 157k bins / 528-dim (172 MB, regenerable in ~19 s, not in git); `train_rnn.py` deterministic sweep; `pod_sweep.sh` launcher; smoke 3×3 epochs on local RTX 4000 |
-| H100 sweep | **Blocked** | Runpod 402 balance too low (verified on cheapest pod). Unblocks: user adds funds at console.runpod.io/user/billing → I create H100 SXM ($2.69/hr community) → `pod_sweep.sh` → ~1–2 h → integrate winner |
-| Official benchmark intel | Done | FALCON H1 (EvalAI, few-shot): static WF 0.16, NoMAD 0.13, CycleGAN 0.12, NDT2 FSS 0.52, oracle NDT2 0.63. Our 0.167 beats all classical baselines locally |
+| Human decoder recovery (schema 3) | **Done, source-selected** | Later days 0.1799 (rank-6 + running z-score, pre-registered) vs 0.1737 strongest matched baseline; label-free front-end alone 0.1731 beats every schema-1 result incl. the later-day-tuned blend (0.1670); Rust parity 1.04e-17 / 17,233 bins |
+| Dev protocol | Fixed | Cross-recording folds (calibrate recording 1 → score recording 2) replace within-recording folds that over-rewarded supervised fits |
+| Pre-registration | Committed before evaluation | `examples/recovery/preregistration-2026-10-07.json` (commit `7198a2c`) |
+| Decompiler verification + transformer emitter | Done | `cargo test` 12+4 pass |
+| GRU sweep harness | Fixed, smoke-tested only | `scripts/recovery/train_rnn.py`: no longer early-stops on the scored day; beta=0 no longer freezes output; diverged runs no longer crash. Zero-shot folds only; no reported result |
 
-## Honesty ledger (kept current)
+## Honesty ledger
 
-- All later-day numbers = reused-data reevaluation, not a fresh holdout.
-- Leaderboard-informed choices: deployed candidate (blend) + 30 s alphas, disclosed via `reused_data_*` keys in `examples/recovery/protocol.json` and `recovery-selection.json` (`later_day_labels_used_for_selection: true`).
-- Source-only: multi-tau feature stack, causal β=0.1 smoother, repair family, dev selection.
-- Discarded with evidence: empirical-Bayes prior ridge, within-day CV, CORAL.
+- Later-day recordings were inspected by schema-1 pipelines; every later-day number is reused-data evidence.
+- Schema 3 used no later-day labels for selection. Base ridge alpha is pinned at 1.0 (pre-registered); the post-hoc base-alpha search (prefers 0.01 on dev) and its worse later-day run (frozen 0.1707, rank-6 0.1317) are disclosed in README and protocol.json.
+- Local chronological-block split on public calibration files: not comparable to official FALCON leaderboard numbers (EvalAI held-out evaluation). Do not cite leaderboard baselines as beaten.
 
-## Next actions (in order)
+## Next actions
 
-1. User funds Runpod → H100 sweep (60 trials × 3 forward folds, ~$5).
-2. Integrate winning trial: RNN as base decoder + smoother; decide patch story honestly (RNN weights are not a compact linear patch — the linear blend stays the compact variant).
-3. Single later-day evaluation of the winner; update `results/*` + README; keep disclosures.
+1. Optional: GRU sweep (`scripts/recovery/pod_sweep.sh` or local) — compare zero-shot against the frozen + running z-score linear decoder on the same cross-recording folds before any integration.
+2. Optional: official FALCON H1 submission via EvalAI for a leaderboard-comparable number.

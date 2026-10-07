@@ -1,6 +1,6 @@
 ND := target/release/nd
 
-.PHONY: all build test bench train demo proofs bci breakthrough automata-test recovery recovery-test
+.PHONY: all build test bench train demo proofs bci breakthrough automata-test recovery recovery-test recovery-benchmark
 
 all: build test bench demo
 
@@ -71,3 +71,9 @@ recovery:
 
 recovery-test:
 	uv run --python 3.12 --with numpy==2.5.3 python -m unittest discover -s tests -p 'test_recovery.py'
+
+# Development-only repair benchmark: rebuild the cross-recording fixtures from
+# cached held-in recordings (needs a prior `make recovery`), then score candidates.
+recovery-benchmark:
+	OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 uv run --offline --python 3.12 --with numpy==2.5.3 --with h5py==3.16.0 scripts/recovery/prepare_benchmark.py
+	OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 uv run --offline --python 3.12 --with numpy==2.5.3 scripts/recovery/benchmark.py

@@ -7,18 +7,16 @@ import numpy as np
 
 REPAIR_METHOD = "three_source_separate_bias_rank_6_repair"
 REPAIR_RANK = 6
-BLEND_METHOD = "recenter_blend_rank_6_repair"
 
 METHODS = [
-    {"id": "frozen", "label": "Frozen decoder", "description": "Earlier-day ridge decoder; no new-day data."},
-    {"id": "recenter", "label": "Neural recentering", "description": "Calibration-prefix neural mean/variance adjustment; no new labels."},
+    {"id": "frozen", "label": "Frozen decoder", "description": "Earlier-day ridge weights behind the shared label-free running z-score; no new-day labels."},
+    {"id": "recenter", "label": "Neural recentering", "description": "Additional calibration-prefix mean/variance adjustment of the z-scored features; no new labels."},
     {"id": "scratch", "label": "New-day ridge", "description": "Fit all coefficients from the same calibration prefix."},
     {"id": "anchored", "label": "Prior-anchored ridge", "description": "Fit a full residual correction with a quadratic prior around the frozen decoder."},
     {"id": "output_affine", "label": "Output recalibration", "description": "Affine correction of the seven frozen predictions."},
     {"id": "gain_repair", "label": "Channel-gain repair", "description": "One coefficient gain per neural channel plus seven output offsets; preserve each channel's seven-output direction."},
     {"id": "drift_basis", "label": "Earlier-day drift repair", "description": "Fit a small combination of coefficient corrections learned exclusively from earlier recording days."},
     {"id": REPAIR_METHOD, "label": "Recent-source rank-6 repair", "description": "Average the latest three source-day corrections, then fit rank-six residual slopes and a separately regularized seven-output bias."},
-    {"id": BLEND_METHOD, "label": "Recentering + rank-6 blend", "description": "Uniform prediction average of neural recentering and the rank-six repair at the same alpha; the serialized patch is the full coefficient delta."},
 ]
 
 
@@ -69,6 +67,38 @@ def smooth(values, beta):
     for index, row in enumerate(values):
         out[index] = row if previous is None else beta * row + (1 - beta) * previous
         previous = out[index]
+    return out
+
+
+def prefix_statistics(features):
+    """Label-free mean and variance used to start the running z-score.
+
+    Features silent throughout the prefix start at unit variance, so a channel
+    that wakes up later cannot be divided by a near-zero scale."""
+    if len(features) == 0:
+        raise ValueError("Running z-score needs at least one initialization bin")
+    sd = features.std(axis=0)
+    sd[sd < 1e-8] = 1
+    return features.mean(axis=0), sd * sd
+
+
+def running_zscore(features, mean, variance, tau_s, bin_ms):
+    """Causal per-feature z-score with exponentially forgetting statistics.
+
+    Starts from (mean, variance), updates on every bin including the current one,
+    and never looks ahead. The streaming Rust decoder replays the same arithmetic.
+    """
+    k = bin_ms / 1000 / tau_s
+    if not 0 < k < 1:
+        raise ValueError(f"Running z-score time constant must exceed one bin: {tau_s}s")
+    mean = np.array(mean, dtype=np.float64)
+    variance = np.array(variance, dtype=np.float64)
+    out = np.empty_like(features, dtype=np.float64)
+    for index, row in enumerate(features):
+        delta = row - mean
+        mean = mean + k * delta
+        variance = (1 - k) * (variance + k * delta * delta)
+        out[index] = (row - mean) / np.sqrt(np.maximum(variance, 1e-8))
     return out
 
 
@@ -217,13 +247,6 @@ def adapt(decoder, features, targets, all_features, method, alpha):
         elif method == REPAIR_METHOD:
             w, patch = _rank_update(decoder, features, targets, alpha, REPAIR_RANK)
             parameters = len(patch)
-        elif method == BLEND_METHOD:
-            # Uniform average of the unsupervised recentering and the rank-six
-            # repair at the same alpha. The patch is the full coefficient delta.
-            w_recenter, _, _ = _recentered_weights(decoder, all_features)
-            w_repair, _ = _rank_update(decoder, features, targets, alpha, REPAIR_RANK)
-            w = 0.5 * (w_recenter + w_repair)
-            parameters, patch = w.size, (w - decoder.weights).ravel().tolist()
         elif method == "drift_basis":
             design = np.einsum("tf,kfo->tok", x, decoder.basis).reshape(-1, len(decoder.basis))
             theta = ridge(design, residual.ravel(), alpha, unpenalized=0)
@@ -241,7 +264,7 @@ def apply_patch(decoder, method, patch):
     patch = np.asarray(patch, dtype=np.float64)
     w = decoder.weights.copy()
     c, o = w.shape[0] - 1, w.shape[1]
-    if method not in ("gain_repair", "drift_basis", REPAIR_METHOD, BLEND_METHOD) or patch.ndim != 1:
+    if method not in ("gain_repair", "drift_basis", REPAIR_METHOD) or patch.ndim != 1:
         raise ValueError(f"Invalid compact repair or patch dimensions: {method}")
     if not np.isfinite(patch).all():
         raise ValueError("Patch contains non-finite coefficients")
@@ -258,10 +281,6 @@ def apply_patch(decoder, method, patch):
         w += _recent_prior(decoder)
         w[:-1] += patch[:split].reshape(c, rank) @ patch[split:-o].reshape(rank, o)
         w[-1] += patch[-o:]
-    elif method == BLEND_METHOD:
-        if patch.shape != (w.size,):
-            raise ValueError(f"Invalid {method} patch shape {patch.shape}")
-        w += patch.reshape(w.shape)
     elif method == "drift_basis" and patch.shape == (len(decoder.basis),):
         w += np.einsum("k,kfo->fo", patch, decoder.basis)
     else:

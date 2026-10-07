@@ -8,3 +8,6 @@ __pycache__/
 
 # Precomputed training features: regenerate with scripts/recovery/preprocess_training.py
 results/recovery-training/*.npz
+
+# Development benchmark fixtures (~180 MB): regenerate with `make recovery-benchmark`
+examples/recovery/benchmark/*.npz

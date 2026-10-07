@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 from urllib.parse import urlparse
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DAY_RE = re.compile(r"^[0-9]{8}$")
 METHOD_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -228,7 +228,7 @@ def validate(data: Any) -> dict[str, Any]:
     selected = obj(
         root["selected"],
         "$.selected",
-        {"method", "budget_seconds", "baseline", "hyperparameters"},
+        {"method", "budget_seconds", "baseline", "hyperparameters", "candidate_methods", "baseline_methods"},
     )
     selected_method = string(selected["method"], "$.selected.method")
     if selected_method not in adapted_methods:
@@ -393,7 +393,7 @@ def validate(data: Any) -> dict[str, Any]:
                     fail(method_path, "duplicate numerically equivalent budget keys")
                 parsed_budgets[parsed_budget] = raw_budget
                 matrix7(prediction, f"{method_path}.{raw_budget}", sample_count)
-            expected_budgets = {0.0} if method_id == "frozen" else set(budgets)
+            expected_budgets = set(budgets)
             if set(parsed_budgets) != expected_budgets:
                 fail(method_path, f"expected prediction budgets {sorted(expected_budgets)}")
 

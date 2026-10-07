@@ -271,7 +271,7 @@
 
     <section class="metric-grid" aria-label="Selected result metrics">
       <div class="card metric"><span class="metric-label">Selected method R²</span><strong class="metric-value adapted" id="adapted-r2">—</strong><span class="metric-detail" id="adapted-detail"></span></div>
-      <div class="card metric"><span class="metric-label">Frozen R²</span><strong class="metric-value frozen" id="frozen-r2">—</strong><span class="metric-detail">Earlier-day decoder · no adaptation</span></div>
+      <div class="card metric"><span class="metric-label">Frozen R²</span><strong class="metric-value frozen" id="frozen-r2">—</strong><span class="metric-detail">Earlier-day weights · label-free running z-score only</span></div>
       <div class="card metric"><span class="metric-label">ΔR² vs frozen</span><strong class="metric-value" id="delta-r2">—</strong><span class="metric-detail">Selected method minus frozen</span></div>
       <div class="card metric"><span class="metric-label">Neural channels</span><strong class="metric-value" id="channel-count">—</strong><span class="metric-detail" id="calibration-available"></span></div>
       <div class="card metric"><span class="metric-label">Replay coverage</span><strong class="metric-value" id="coverage">—</strong><span class="metric-detail">Scored display samples</span></div>
@@ -376,7 +376,7 @@
       const r2Class = (element, value, base) => { element.className = `metric-value ${base || ""} ${value < 0 ? "negative" : ""}`.trim(); };
 
       function prediction(session, method, budget) {
-        return budgetEntry(session.replay.predictions[method], method === "frozen" ? 0 : budget);
+        return budgetEntry(session.replay.predictions[method], budget);
       }
 
       function populateControls() {
@@ -715,7 +715,7 @@
         const outcomeVerb = primaryGap > 0 ? "exceeds" : primaryGap < 0 ? "trails" : "matches";
         text($("primary-budget"), `Reused-data reevaluation · ${formatBudget(data.selected.budget_seconds)} calibration · all ${data.sessions.length} later days`);
         text($("primary-title"), primaryGap > 0 ? "Targeted repair beats the strongest recalibration baseline" : "Targeted repair does not beat the strongest recalibration baseline");
-        text($("primary-detail"), `${methods.get(primaryCandidate.method).label}: ${primaryCandidate.mean_r2.toFixed(4)} mean R². ${methods.get(primaryBaseline.method).label}: ${primaryBaseline.mean_r2.toFixed(4)}. Difference: ${primaryGap > 0 ? "+" : ""}${primaryGap.toFixed(4)}. Method selected on earlier-day folds; the 30-second alpha was reselected from reused later-day results (disclosed override).`);
+        text($("primary-detail"), `${methods.get(primaryCandidate.method).label}: ${primaryCandidate.mean_r2.toFixed(4)} mean R². ${methods.get(primaryBaseline.method).label}: ${primaryBaseline.mean_r2.toFixed(4)}. Difference: ${primaryGap > 0 ? "+" : ""}${primaryGap.toFixed(4)}. Method, alphas, and front-end selected on held-in cross-recording folds and pre-registered; no later-day labels used for selection.`);
         text($("evidence-status"), data.evaluation_evidence);
         $("primary-outcome").dataset.improved = String(primaryGap > 0);
         const compiled = data.compiled_validation;

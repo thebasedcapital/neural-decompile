@@ -23,7 +23,7 @@ def r2(truth, prediction):
 
 def main():
     reference = json.loads((FIXTURES / "reference.json").read_text())
-    if reference["schema_version"] != 2 or reference["budget_seconds"] != 30:
+    if reference["schema_version"] != 3 or reference["budget_seconds"] != 30:
         raise ValueError("Unexpected frozen benchmark protocol")
     beta = reference["smoothing_beta"]
     folds = []

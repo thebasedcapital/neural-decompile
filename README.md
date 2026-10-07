@@ -2,27 +2,80 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19339860.svg)](https://doi.org/10.5281/zenodo.19339860)
 
-Extract the algorithm a small recurrent network actually implements—including when it is the wrong algorithm. Find a counterexample, search a one-coefficient repair, and replay the equivalence certificate.
+**An intracortical decoder that is accurate yesterday drifts today.** `nd` treats decoders as programs: it diagnoses where they break, repairs them from seconds of data, compiles them to dependency-free streaming Rust, and—on small RNNs—certifies what algorithm they actually run.
 
 ```text
-trained weights -> integer model -> certified finite-state machine
-                                          |
-                              compare with task specification
-                                 /                    \
-                         equivalent             shortest counterexample
-                                                       |
-                                            one-coefficient repair
-                                                       |
-                                             replayable certificate
-
-Supporting tools: Python/Rust emission, circuit inspection, real spike-data demo
+human intracortical counts (176 ch, 20 ms bins)
+        │  causal multi-tau filter (120/240/480 ms)          ┐
+        │  causal running z-score, τ = 30 s, no labels       │ compiled to one
+        │  frozen earlier-day ridge decoder (3,703 coeffs)   │ streaming Rust file,
+        │  + optional 30 s rank-6 patch (3,217 scalars)      │ parity 1.04e-17
+        ▼  causal output smoother                            ┘
+   seven cued movement velocities, ~11 µs/bin incl. I/O
 ```
 
-`nd` is a Rust CLI for ReLU RNNs, a supported transformer JSON format, and GGUF tensor inspection. It does **not** turn arbitrary neural networks into human-level explanations. Integer-valued weights do not by themselves establish algorithmic correctness, finite-state behavior, or safe fixed-width arithmetic.
+| Seven later days, FALCON H1 human data, 30 s calibration | New-day labels | Mean R² |
+|---|---:|---:|
+| Frozen decoder, earlier pipeline | none | 0.1212 |
+| Neural recentering, earlier pipeline (its strongest baseline) | none | 0.1535 |
+| Earlier deployed blend (candidate and alpha tuned on these later days) | 30 s | 0.1670 |
+| **Frozen decoder + running z-score** | **none** | **0.1731** |
+| Recentering + running z-score (strongest matched baseline) | none | 0.1737 |
+| **Rank-6 patch + running z-score (pre-registered)** | 30 s | **0.1799** |
 
-**Research:** [paper / DOI](https://doi.org/10.5281/zenodo.19339860) · [discussion](https://www.lesswrong.com/posts/MgydourqbPxopHSyC/neural-decompilation-we-decompiled-an-llm-attention-head)
+The label-free front-end alone beats every earlier configuration, including one tuned on the evaluation days. The pre-registered 30-second patch adds **+0.0062** over the strongest matched baseline and wins on **5 of 7** days. Every number is offline, open-loop, one participant, and reused-data evidence; details and disclosures below.
 
-The published manuscript and historical LLM results remain in `paper/` and `results/`. They are not fresh verification of this checkout. Use the generated benchmark and explicit proof domains below for current reproducibility; do not reuse historical “13/13” or unrestricted “all inputs” claims as submission evidence.
+**Research:** [paper / DOI](https://doi.org/10.5281/zenodo.19339860) · [discussion](https://www.lesswrong.com/posts/MgydourqbPxopHSyC/neural-decompilation-we-decompiled-an-llm-attention-head). The manuscript and historical LLM-head notes ([`docs/`](docs/), `paper/`, parts of `results/`) are not fresh verification of this checkout.
+
+## Human decoder recovery across days
+
+```bash
+make recovery          # downloads pinned FALCON H1 assets once, selects, evaluates, compiles Rust
+make recovery-test     # causality, metric, patch, and front-end invariants
+make recovery-benchmark  # development-only candidate benchmark (never opens later days)
+# Open results/recovery.html: interactive 7-channel replay of every method, day, and budget.
+```
+
+Data: [FALCON H1 / DANDI 000954](https://dandiarchive.org/dandiset/000954/draft) — **176 channels, seven cued reach-and-grasp velocities, six earlier training days, seven later days**. On each later day the first recording supplies calibration; the second recording is scored. No GPU required; `uv` pins NumPy/h5py.
+
+### What was wrong, and the fix
+
+The earlier pipeline validated inside a single recording (calibration prefix → tail of the same file). Later-day scoring always crosses a recording boundary. That mismatch is why its supervised repair won development folds (0.39) and then collapsed on later days, prompting alpha and candidate reselection on the later days themselves.
+
+**Cross-recording folds** reproduce the collapse using held-in days only: calibrate on recording 1, score recording 2. Under them the earlier rank-6 repair at its dev-chosen alpha 1 drops to **0.1635**, and the dev-optimal alpha moves to 30–100—what later days had shown. Searching on those folds alone found that a **causal running z-score** (every feature re-centred and re-scaled online with a 30 s forgetting window) beats both the earlier global normalization and a static calibration-prefix z-score (best rank-6 fold mean 0.2944 vs 0.2792 and 0.2663).
+
+The front-end, τ, method, and alpha were fixed in [`preregistration-2026-10-07.json`](examples/recovery/preregistration-2026-10-07.json), committed before any later-day score was computed for them. `make recovery` reproduces the pre-registered numbers exactly.
+
+| 30 s calibration | Cross-recording dev folds (3) | Later days (7) | Later-day per-day R² |
+|---|---:|---:|---|
+| Frozen | 0.2648 | 0.1731 | .264 .138 .106 .132 .207 .209 .155 |
+| Recentering | 0.2667 | 0.1737 | .265 .139 .105 .134 .209 .209 .154 |
+| Anchored ridge | 0.2631 | 0.1703 | .266 .128 .107 .117 .206 .217 .152 |
+| New-day ridge | — | 0.0468 | |
+| **Rank-6 patch, α = 100** | **0.2944** | **0.1799** | .290 .141 .096 .130 .228 .218 .156 |
+
+At 45 s the patch reaches **0.1872** (anchored ridge 0.1819). Every method, budget (0/5/15/30/45 s), day, and per-output score is in [`recovery.json`](results/recovery.json) and the replay.
+
+### On-implant shape
+
+- **Label-free state:** 528 running means + 528 variances, updated each bin; initialized from 30 s of unlabeled activity.
+- **Patch:** rank-6 slope correction (528×6 + 6×7) + 7 offsets = **3,217 scalars**, 13.1% fewer than the 3,703-coefficient decoder; requires the matching base and source-correction bank.
+- **Compiled:** [`recovery_decoder.rs`](results/recovery_decoder.rs) is one dependency-free file (filters, z-score, decoder, smoother). Executed Rust matches Python on **17,233 bins from all seven evaluation recordings**, max absolute error **1.04e-17**; one process run took **10.9 µs/bin including I/O and startup**. That is replay parity on a desktop, not an all-input proof or implant latency.
+
+### Disclosures
+
+- **Reused data.** Earlier pipelines inspected these later-day recordings, so no later-day number here is a fresh holdout. The new pipeline used no later-day labels for selection; its designer knew the earlier results.
+- **Base regularization is pinned at 1.0**, as in the pre-registered evaluation. Re-running the base-alpha search on cross-recording folds prefers 0.01 (frozen dev 0.3349); a full run with 0.01, executed after the pre-registered evaluation, gives later-day frozen 0.1707 and rank-6 0.1317. Near-day folds still over-reward weak regularization; reported, not hidden.
+- **Margins are small.** The patch beats the label-free baseline by +0.0062 mean R²; most of the gain over the earlier pipeline (+0.020) comes from the label-free front-end.
+- **Not the FALCON leaderboard.** This is a local chronological-block split on public calibration files; numbers are not comparable to official held-out FALCON scores. No clinical, closed-loop, or novelty claim. Dates are obfuscated.
+- **Decompilation's role** here is execution fidelity (compiled replay), not decoding accuracy; no ablation shows decompilation improves R².
+- **History.** Schema 1 (multi-tau features, causal smoother, rank-6 repair, then later-day-tuned blend) remains in git history; [`protocol.json`](examples/recovery/protocol.json) records the transition.
+
+Data attribution: Ye, Joel; Jennifer L. Collinger; Robert Gaunt (2024), *FALCON Benchmark H1: Human 7DoF Reach and Grasp Motor BCI*, **CC-BY-4.0**, subject to the dataset's Data Use Agreement. The archive exposes a draft with validation status **Invalid**; [`manifest.json`](examples/recovery/manifest.json) pins all 40 asset IDs, sizes, SHA-256 digests, attribution, and usage conditions. Raw recordings and the regenerable 180 MB benchmark fixtures are cached locally and ignored by Git.
+
+`make recovery-benchmark` rebuilds SHA-256-pinned cross-recording fixtures from cached held-in files, checks all five baselines against the selection record, and scores every candidate with exactly 30 s of calibration. It never opens later-day recordings. Current development advantage: **+0.0277** (rank-6 0.2944 vs recentering 0.2667; worst fold +0.0209).
+
+`scripts/recovery/train_rnn.py` is a GPU-ready GRU sweep harness (zero-shot forward folds, early stopping on the last training day, never on the scored day). It has only a 3-epoch smoke run and contributes no reported result.
 
 ## The result: perfect fixtures, wrong algorithm, certified repair
 
@@ -50,48 +103,6 @@ The extractor does not read the specification while constructing the automaton. 
 Certificates, minimized executable Python, and the separate repaired model are written to `results/automata/`. The original trained weights are unchanged. See [the experiment and proof boundary](results/algorithm-extraction.md).
 
 This is a working project result, **not a claim that automata extraction is new**; see [Weiss, Goldberg & Yahav, ICML 2018](https://proceedings.mlr.press/v80/weiss18a.html). The current repair search is a finite, explicit neighborhood around a known-specification toy task—not general neural program repair or a BCI safety guarantee.
-
-## Human decoder recovery: multi-tau features + smoothed rank-6 blend, disclosed leaderboard evidence
-
-```bash
-make recovery
-# Open results/recovery.html in a browser.
-make recovery-test
-```
-
-This separate experiment uses real human intracortical recordings from [FALCON H1 / DANDI 000954](https://dandiarchive.org/dandiset/000954/draft): **176 neural channels, seven cued movement velocities, six earlier training days, and seven later evaluation days**. It implements causal multi-tau decoding, limited-calibration repair, five matched baselines, a uniform causal output smoother, an interactive seven-channel replay, and a standalone streaming Rust decoder. No GPU is required; Make uses pinned NumPy/h5py dependencies through `uv`.
-
-The public release contains **no later-day minival files**. The original protocol reserved each later day's **second recording block** for local evaluation before inspecting its targets; only the first block supplies calibration. Those later-day results have since been seen. **Every later-day result below is reused-data reevaluation, not a fresh holdout.** Feature stack and output smoothing were validated on the three earlier-day forward folds `19250115`, `19250119`, `19250120`; the deployed candidate and its 30-second alphas were reselected from the reused later-day results and are disclosed in [`protocol.json`](examples/recovery/protocol.json) and [`recovery-selection.json`](results/recovery-selection.json).
-
-**Design.** (1) The base decoder's features stack three causal exponential kernels (taus **120/240/480 ms**, 528 feature channels) instead of a single 240 ms kernel — chosen on dev folds only. (2) Every method's predictions pass through one **causal β=0.1 exponential smoother**, reset at each recording boundary — a fair, uniform output convention that improved the compact repair on diagnostic dev-fold runs (0.2547 → 0.2838 on the original single-tau base). (3) The deployed candidate `recenter_blend_rank_6_repair` uniformly averages neural recentering with the rank-six repair at alpha 30: the repair averages the latest three source-day coefficient corrections, fits rank-six residual slopes plus a separately regularized seven-output intercept (ridge-metric projection, not coefficient truncation), and recentering supplies unsupervised normalization robustness. Scores are day-macro-averaged, variance-weighted $R^2$:
-
-| Evidence at 30 seconds | Frozen | Recentering | Anchored ridge (strongest baseline) | Rank-6 repair (compact) | **Deployed blend** |
-|---|---:|---:|---:|---:|---:|
-| Three development folds | 0.172025 | 0.206779 | 0.367371 | **0.390737** (+0.023366) | 0.368569 (+0.001198) |
-| Seven reused later days | 0.121153 | **0.153511** (strongest baseline) | 0.052478 | 0.161741 (+0.008230) | **0.167012 (+0.013502)** |
-
-**History of the search (all disclosed).** The original gain repair scored 0.147170 on dev and 0.082087 on later days (below recentering). The first rank-six deployment with dev-selected alpha 1.0 won dev (+0.014706) but collapsed on later days (**-0.009087**): dev-fold alpha curves peaked consistently at 1.0, yet later days drift further and the lightly regularized fit absorbs block-specific noise. Within-prefix cross-validation cannot detect this — the best config scores **-0.30** on held-out prefix segments while scoring **+0.23** on block 2 — so per-day CV was rejected on dev folds, cheaply. The effective fixes, in order of measured impact: **stacked multi-tau features** (later-day best adapted 0.0945 → 0.1288), **uniform causal smoothing** (→ 0.1622 for the compact rank-6 variant), and the **recentering blend** (→ 0.1670). Empirical-Bayes prior-covariance ridge was tested and discarded: no gain over isotropic ridge. Every intermediate number and the original negative result are preserved in [`recovery-initial-summary.json`](results/recovery-initial-summary.json).
-
-**Compactness.** The rank-6 patch is **3,217 scalars** (528×6 left factor, 6×7 right factor, seven offsets) — **13.1% fewer** than the 3,703 full-decoder coefficients — and reaches 0.161741 later-day R², only 0.0053 below the blend. The blend's patch is the full coefficient delta (3,703 scalars; not compact). Zero-budget and empty-supervision cases retain the frozen decoder. Patches require their matching frozen base model and source-correction bank; parameter counts alone do not establish speed or implant-memory advantages.
-
-[`recovery-selection.json`](results/recovery-selection.json) records the source-only validation rows, `source_selected_candidate` (rank-6, by dev mean R²), the deployed override (`reused_data_deployed_candidate`: blend), both alpha overrides, and `later_day_labels_used_for_selection: true`. The replay and [`recovery.json`](results/recovery.json), schema 2, report **all nine methods, all seven later days, and budgets of 0, 5, 15, 30, and 45 seconds**, including negative scores and a prominent reused-data notice.
-
-The serialized base model and deployed blend patches compile to [`recovery_decoder.rs`](results/recovery_decoder.rs), which implements the stacked kernels and the smoother. Executed Rust matches Python across **17,233 bins from all seven evaluation recordings**, with maximum absolute error **1.21e-17**. One measured process run took **144.60 ms**, or **8.39 microseconds/bin including input/output and startup**. That is numerical replay evidence, not an all-input formal proof or biological latency measurement. Behavioral tests cover causal filtering, causal smoothing (future bins cannot change past outputs), variance weighting, rank-six rotation recovery with independent offsets, blend patch reconstruction, malformed patches, empty supervision, and targeted alpha-override application.
-
-This is **offline, open-loop, one-participant research**, not live robot control, clinical validation, or a breakthrough claim. Dates are obfuscated. Compilation contributes execution fidelity; no experiment here shows that neural decompilation improves decoding. The current win combines a better feature basis, a uniform causal smoother, and a source-structure repair, with the final candidate choice tuned on reused evaluation data.
-
-Data attribution: Ye, Joel; Jennifer L. Collinger; Robert Gaunt (2024), *FALCON Benchmark H1: Human 7DoF Reach and Grasp Motor BCI*, **CC-BY-4.0**, subject to the dataset's Data Use Agreement. The archive exposes a draft with validation status **Invalid**; [`manifest.json`](examples/recovery/manifest.json) pins all 40 asset IDs, sizes, SHA-256 digests, attribution, and usage conditions. Raw recordings are cached locally and ignored by Git.
-
-### Development-only repair benchmark
-
-`scripts/recovery/benchmark.py` executes the repair on immutable, SHA-256-pinned fixtures for the three earlier-day forward-validation folds. It fits each candidate using exactly **30 seconds** of calibration and checks serialized-patch reconstruction. It never downloads data or opens later-day recordings. The primary metric is **candidate mean R² minus the strongest frozen development baseline**; higher is better.
-
-```bash
-OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 uv run --offline --python 3.12 \
-  --with numpy==2.5.3 python scripts/recovery/benchmark.py
-```
-
-The initial development gap was **-0.123893** (0.147170 candidate versus 0.271063 baseline, original single-tau fixtures); the current gap is **+0.023366** (0.390737 rank-6 versus 0.367371 anchored baseline, multi-tau smoothed fixtures). `prepare_benchmark.py` creates fixtures from verified local earlier-day files and checks all five baselines against the current selection record; do not regenerate or alter those fixtures during optimization. The benchmark never reads the previously inspected later-day recordings.
 
 ## Run the demo
 
@@ -204,6 +215,9 @@ GGUF v2/v3 inspection supports F32, F16, BF16, Q8_0, and Q4_0 tensors. Inspectin
 | `make proofs` | Kani harnesses; Kani installation required |
 | `make breakthrough` | Extract, falsify, repair, and replay automata certificates |
 | `make automata-test` | Soundness boundaries, repair, and tamper-rejection tests |
+| `make recovery` | Human BCI decoder recovery: select, evaluate, compile Rust, render replay |
+| `make recovery-test` | Causality, metric, patch, and running z-score invariants |
+| `make recovery-benchmark` | Development-only candidate benchmark on cross-recording folds |
 
 For Kani setup:
 

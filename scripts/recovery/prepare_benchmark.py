@@ -12,7 +12,8 @@ from pathlib import Path
 import numpy as np
 
 from data import load_sessions
-from experiment import calibration_prefix, group_days, scored_rows, smoothed_scores
+from experiment import (calibration_prefix, front_end, group_days, pooled_statistics, scored_rows,
+                        smoothed_scores, zscore_training)
 from model import adapt, fit_base
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,24 +28,25 @@ def main():
     budget = protocol["primary_budget_seconds"]
     if budget != 30:
         raise ValueError("The primary calibration budget must remain 30 seconds")
-    sessions = load_sessions(("held-in-calib", "held-in-minival"))
-    training = group_days([s for s in sessions if s.split == "held-in-calib"], protocol)
-    validation = group_days([s for s in sessions if s.split == "held-in-minival"], protocol)
+    training = group_days(load_sessions(("held-in-calib",)), protocol)
+    normalized = zscore_training(training, protocol)
     days = sorted(training)
     fold_days = days[3:]
     if fold_days != selection["fold_days"]:
         raise ValueError("Development folds differ from the original experiment")
     baseline_rows = []
     for method in protocol["baseline_methods"]:
-        rows = [r for r in selection["validation"] if r["method"] == method and r["budget_seconds"] == budget]
-        baseline_rows.append(max(rows, key=lambda r: r["mean_r2"]))
+        alpha = selection["adaptation_alphas"][method][str(budget)]
+        baseline_rows.append(next(r for r in selection["validation"] if r["method"] == method
+                                  and r["budget_seconds"] == budget and r["alpha"] == alpha))
     OUT.mkdir(parents=True, exist_ok=True)
     beta = protocol["output_smoothing"]["beta"]
     folds = []
-    for index, day in enumerate(days[3:], start=3):
-        base = fit_base({d: scored_rows(training[d]) for d in days[:index]}, selection["base_alpha"])
-        cx, cy, all_x = calibration_prefix(training[day], budget, protocol["bin_ms"])
-        blocks = validation[day]
+    for index, day in enumerate(fold_days, start=3):
+        base = fit_base({d: scored_rows(normalized[d]) for d in days[:index]}, selection["base_alpha"])
+        fallback = pooled_statistics({d: training[d] for d in days[:index]})
+        calibration, blocks, _ = front_end(training[day][:1], training[day][1:], budget, fallback, protocol)
+        cx, cy, all_x = calibration_prefix(calibration, budget, protocol["bin_ms"])
         for reference in baseline_rows:
             weights, _, _, _ = adapt(base, cx, cy, all_x, reference["method"], reference["alpha"])
             actual = smoothed_scores(base, blocks, weights, beta)[0]
@@ -63,17 +65,17 @@ def main():
                       "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                       "training_days": days[:index], "calibration_bins": len(all_x),
                       "scored_calibration_bins": len(cx),
-                      "evaluation_bins": sum(int(s.mask.sum()) for s, _ in validation[day]),
-                      "calibration_files": [s.key for s, _ in training[day]],
-                      "evaluation_files": [s.key for s, _ in validation[day]]})
+                      "evaluation_bins": sum(int(s.mask.sum()) for s, _ in blocks),
+                      "calibration_files": [s.key for s, _ in calibration],
+                      "evaluation_files": [s.key for s, _ in blocks]})
     reference = {
-        "schema_version": 2, "budget_seconds": budget,
+        "schema_version": 3, "budget_seconds": budget,
         "base_alpha": selection["base_alpha"], "alphas": protocol["adaptation_alphas"],
-        "smoothing_beta": beta,
+        "smoothing_beta": beta, "front_end": protocol["front_end"],
         "baseline_methods": protocol["baseline_methods"], "baselines": baseline_rows,
         "folds": folds, "protocol_sha256": hashlib.sha256(protocol_path.read_bytes()).hexdigest(),
         "original_selection_sha256": hashlib.sha256(selection_path.read_bytes()).hexdigest(),
-        "scope": "Development-only optimization on three earlier-day forward folds. Previously inspected later-day recordings are excluded; this is not a new holdout claim.",
+        "scope": "Development-only optimization on three cross-recording held-in folds (calibrate on recording 1, evaluate on recording 2); features are stored after the label-free running z-score. Later-day recordings are never opened.",
     }
     (OUT / "reference.json").write_text(json.dumps(reference, indent=2, allow_nan=False) + "\n")
     print(json.dumps({"folds": fold_days, "budget_seconds": budget,
