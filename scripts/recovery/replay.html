@@ -282,7 +282,7 @@
         <div>
           <p class="section-kicker">Reused later-day recording replay</p>
           <h2 id="replay-title">Target, frozen, and selected-method velocities</h2>
-          <p class="section-copy">Precomputed outputs on the previously inspected second chronological block, downsampled for display. R² uses all eligible 50 Hz bins, not these plotted samples.</p>
+          <p class="section-copy">Precomputed outputs on the previously inspected second chronological block, downsampled for display. Predictions pass through the protocol's causal β=0.1 exponential smoother (reset at each recording boundary). R² uses all eligible 50 Hz bins, not these plotted samples.</p>
         </div>
         <div class="legend" aria-label="Plot legend">
           <span class="legend-item"><i class="swatch target"></i>Target</span>
@@ -707,13 +707,14 @@
         const source = document.createElement("a"); source.href = data.dataset.source_url; source.target = "_blank"; source.rel = "noreferrer"; text(source, data.dataset.name);
         const list = $("protocol-list");
         const primaryCandidate = summaryRow(data.selected.method, data.selected.budget_seconds);
+        const baselineMethods = new Set(data.selected.baseline_methods || ["frozen", "recenter", "scratch", "anchored", "output_affine"]);
         const primaryBaseline = data.summary
-          .filter((row) => row.budget_seconds === data.selected.budget_seconds && row.method !== data.selected.method)
+          .filter((row) => row.budget_seconds === data.selected.budget_seconds && baselineMethods.has(row.method))
           .reduce((best, row) => row.mean_r2 > best.mean_r2 ? row : best);
         const primaryGap = primaryCandidate.mean_r2 - primaryBaseline.mean_r2;
         const outcomeVerb = primaryGap > 0 ? "exceeds" : primaryGap < 0 ? "trails" : "matches";
         text($("primary-budget"), `Reused-data reevaluation · ${formatBudget(data.selected.budget_seconds)} calibration · all ${data.sessions.length} later days`);
-        text($("primary-title"), primaryGap > 0 ? "Compact repair beats the best measured comparator" : "Compact repair does not beat the best measured comparator");
+        text($("primary-title"), primaryGap > 0 ? "Targeted repair beats the strongest recalibration baseline" : "Targeted repair does not beat the strongest recalibration baseline");
         text($("primary-detail"), `${methods.get(primaryCandidate.method).label}: ${primaryCandidate.mean_r2.toFixed(4)} mean R². ${methods.get(primaryBaseline.method).label}: ${primaryBaseline.mean_r2.toFixed(4)}. Difference: ${primaryGap > 0 ? "+" : ""}${primaryGap.toFixed(4)}. Method selected on earlier-day folds; the 30-second alpha was reselected from reused later-day results (disclosed override).`);
         text($("evidence-status"), data.evaluation_evidence);
         $("primary-outcome").dataset.improved = String(primaryGap > 0);

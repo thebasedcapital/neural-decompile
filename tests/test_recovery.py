@@ -103,6 +103,39 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.apply_patch(decoder, method, patch)
 
+    def test_causal_smoothing_ignores_future_bins_and_resets(self):
+        values = np.arange(20, dtype=float).reshape(10, 2)
+        original = m.smooth(values, 0.1)
+        changed = values.copy()
+        changed[5:] += 100.0
+        np.testing.assert_array_equal(m.smooth(changed, 0.1)[:5], original[:5])
+        np.testing.assert_array_equal(m.smooth(values[:1], 0.1), values[:1])
+        with self.assertRaises(ValueError):
+            m.smooth(values, 0.0)
+        with self.assertRaises(ValueError):
+            m.smooth(values, 1.5)
+
+    def test_blend_patch_reconstructs_average_of_parts(self):
+        rng = np.random.default_rng(412)
+        channels, outputs = 6, 7
+        decoder = m.Decoder(
+            rng.normal(size=channels), np.linspace(.5, 2., channels),
+            rng.normal(size=outputs), np.linspace(.3, 3., outputs),
+            rng.normal(size=(channels + 1, outputs)),
+            rng.normal(size=(3, channels + 1, outputs)),
+        )
+        raw = rng.normal(size=(300, channels)) * decoder.scale + decoder.mean
+        targets = decoder.predict(raw)
+        fitted, count, _, patch = m.adapt(decoder, raw, targets, raw, m.BLEND_METHOD, 10.)
+        self.assertEqual(count, decoder.weights.size)
+        restored = m.apply_patch(decoder, m.BLEND_METHOD, patch)
+        np.testing.assert_allclose(restored, fitted, rtol=1e-12, atol=1e-12)
+        recentered = m.adapt(decoder, raw, targets, raw, "recenter", 0.)[0]
+        repaired = m.adapt(decoder, raw, targets, raw, m.REPAIR_METHOD, 10.)[0]
+        np.testing.assert_allclose(fitted, 0.5 * (recentered + repaired), rtol=1e-12, atol=1e-12)
+        with self.assertRaises(ValueError):
+            m.apply_patch(decoder, m.BLEND_METHOD, patch[:-1])
+
     def test_alpha_overrides_are_targeted_and_recorded(self):
         choices = {"three_source_separate_bias_rank_6_repair": {"30": 1.0, "45": 1.0},
                    "anchored": {"30": 1.0}}

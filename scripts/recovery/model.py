@@ -7,6 +7,7 @@ import numpy as np
 
 REPAIR_METHOD = "three_source_separate_bias_rank_6_repair"
 REPAIR_RANK = 6
+BLEND_METHOD = "recenter_blend_rank_6_repair"
 
 METHODS = [
     {"id": "frozen", "label": "Frozen decoder", "description": "Earlier-day ridge decoder; no new-day data."},
@@ -17,6 +18,7 @@ METHODS = [
     {"id": "gain_repair", "label": "Channel-gain repair", "description": "One coefficient gain per neural channel plus seven output offsets; preserve each channel's seven-output direction."},
     {"id": "drift_basis", "label": "Earlier-day drift repair", "description": "Fit a small combination of coefficient corrections learned exclusively from earlier recording days."},
     {"id": REPAIR_METHOD, "label": "Recent-source rank-6 repair", "description": "Average the latest three source-day corrections, then fit rank-six residual slopes and a separately regularized seven-output bias."},
+    {"id": BLEND_METHOD, "label": "Recentering + rank-6 blend", "description": "Uniform prediction average of neural recentering and the rank-six repair at the same alpha; the serialized patch is the full coefficient delta."},
 ]
 
 
@@ -51,6 +53,68 @@ def score(y, predicted):
     if total.sum() <= 0:
         raise ValueError("Evaluation has no target variance")
     return float(per_output @ total / total.sum()), per_output.tolist()
+
+
+def stacked_features(counts, bin_ms, taus):
+    """Stack causal exponential kernels at several taus: channels-major per tau."""
+    return np.column_stack([causal_features(counts, bin_ms, tau) for tau in taus])
+
+
+def smooth(values, beta):
+    """Causal exponential smoothing along time; the caller resets at boundaries."""
+    if not 0 < beta <= 1:
+        raise ValueError(f"Smoothing beta must be in (0, 1]: {beta}")
+    out = np.empty_like(values)
+    previous = None
+    for index, row in enumerate(values):
+        out[index] = row if previous is None else beta * row + (1 - beta) * previous
+        previous = out[index]
+    return out
+
+
+def _recentered_weights(decoder, all_features):
+    """Unsupervised normalization update; returns weights, parameters, patch."""
+    mu, sd = all_features.mean(axis=0), all_features.std(axis=0)
+    sd[sd < 1e-8] = 1
+    w = decoder.weights.copy()
+    w[:-1] = decoder.weights[:-1] * (decoder.scale / sd)[:, None]
+    w[-1] += ((decoder.mean - mu) / sd) @ decoder.weights[:-1]
+    return w, 2 * (w.shape[0] - 1), np.concatenate((mu, sd)).tolist()
+
+
+def _rank_update(decoder, features, targets, alpha, rank):
+    """Prior + rank-r slope correction and separate bias on top of the frozen decoder."""
+    w = decoder.weights + _recent_prior(decoder)
+    x = decoder.design(features)
+    y = (targets - decoder.target_mean) / decoder.target_scale
+    residual = y - x @ w
+    neural = x[:, :-1]
+    c = w.shape[0] - 1
+    mean = neural.mean(axis=0)
+    bias_cross = residual.mean(axis=0)
+    bias_normal = 1 + alpha
+    # Eliminate the regularized intercept before constraining slope rank.
+    gram = neural.T @ neural / len(x)
+    gram.flat[::c + 1] += alpha
+    gram -= np.outer(mean, mean) / bias_normal
+    cross = neural.T @ residual / len(x) - mean[:, None] * bias_cross / bias_normal
+    delta = np.linalg.solve(gram, cross)
+    # Project in the ridge metric and physical output units, not by
+    # truncating the coefficient matrix's Euclidean singular values.
+    covariance = delta.T @ cross
+    covariance = (covariance + covariance.T) * 0.5
+    covariance *= decoder.target_scale[:, None] * decoder.target_scale[None, :]
+    _, axes = np.linalg.eigh(covariance)
+    axes = axes[:, -rank:]
+    left = (delta * decoder.target_scale) @ axes
+    right = axes.T / decoder.target_scale
+    slopes = left @ right
+    bias = (bias_cross - mean @ slopes) / bias_normal
+    w = w.copy()
+    w[:-1] += slopes
+    w[-1] += bias
+    patch = np.concatenate((left.ravel(), right.ravel(), bias)).tolist()
+    return w, patch
 
 
 @dataclass
@@ -119,11 +183,7 @@ def adapt(decoder, features, targets, all_features, method, alpha):
     if method == "frozen" or len(all_features) == 0:
         return w, parameters, 0., patch
     if method == "recenter":
-        mu, sd = all_features.mean(axis=0), all_features.std(axis=0)
-        sd[sd < 1e-8] = 1
-        w[:-1] = decoder.weights[:-1] * (decoder.scale / sd)[:, None]
-        w[-1] += ((decoder.mean - mu) / sd) @ decoder.weights[:-1]
-        parameters, patch = 2 * c, np.concatenate((mu, sd)).tolist()
+        w, parameters, patch = _recentered_weights(decoder, all_features)
     elif len(features) == 0:
         # An empty scored prefix cannot support supervised adaptation.
         # Preserve the frozen model and explicitly report zero fitted parameters.
@@ -155,34 +215,15 @@ def adapt(decoder, features, targets, all_features, method, alpha):
             w[-1] += delta[c:]
             parameters, patch = delta.size, delta.tolist()
         elif method == REPAIR_METHOD:
-            rank = REPAIR_RANK
-            w += _recent_prior(decoder)
-            residual = y - x @ w
-            neural = x[:, :-1]
-            mean = neural.mean(axis=0)
-            bias_cross = residual.mean(axis=0)
-            bias_normal = 1 + alpha
-            # Eliminate the regularized intercept before constraining slope rank.
-            gram = neural.T @ neural / len(x)
-            gram.flat[::c + 1] += alpha
-            gram -= np.outer(mean, mean) / bias_normal
-            cross = neural.T @ residual / len(x) - mean[:, None] * bias_cross / bias_normal
-            delta = np.linalg.solve(gram, cross)
-            # Project in the ridge metric and physical output units, not by
-            # truncating the coefficient matrix's Euclidean singular values.
-            covariance = delta.T @ cross
-            covariance = (covariance + covariance.T) * 0.5
-            covariance *= decoder.target_scale[:, None] * decoder.target_scale[None, :]
-            _, axes = np.linalg.eigh(covariance)
-            axes = axes[:, -rank:]
-            left = (delta * decoder.target_scale) @ axes
-            right = axes.T / decoder.target_scale
-            slopes = left @ right
-            bias = (bias_cross - mean @ slopes) / bias_normal
-            w[:-1] += slopes
-            w[-1] += bias
-            patch = np.concatenate((left.ravel(), right.ravel(), bias)).tolist()
+            w, patch = _rank_update(decoder, features, targets, alpha, REPAIR_RANK)
             parameters = len(patch)
+        elif method == BLEND_METHOD:
+            # Uniform average of the unsupervised recentering and the rank-six
+            # repair at the same alpha. The patch is the full coefficient delta.
+            w_recenter, _, _ = _recentered_weights(decoder, all_features)
+            w_repair, _ = _rank_update(decoder, features, targets, alpha, REPAIR_RANK)
+            w = 0.5 * (w_recenter + w_repair)
+            parameters, patch = w.size, (w - decoder.weights).ravel().tolist()
         elif method == "drift_basis":
             design = np.einsum("tf,kfo->tok", x, decoder.basis).reshape(-1, len(decoder.basis))
             theta = ridge(design, residual.ravel(), alpha, unpenalized=0)
@@ -200,7 +241,7 @@ def apply_patch(decoder, method, patch):
     patch = np.asarray(patch, dtype=np.float64)
     w = decoder.weights.copy()
     c, o = w.shape[0] - 1, w.shape[1]
-    if method not in ("gain_repair", "drift_basis", REPAIR_METHOD) or patch.ndim != 1:
+    if method not in ("gain_repair", "drift_basis", REPAIR_METHOD, BLEND_METHOD) or patch.ndim != 1:
         raise ValueError(f"Invalid compact repair or patch dimensions: {method}")
     if not np.isfinite(patch).all():
         raise ValueError("Patch contains non-finite coefficients")
@@ -217,6 +258,10 @@ def apply_patch(decoder, method, patch):
         w += _recent_prior(decoder)
         w[:-1] += patch[:split].reshape(c, rank) @ patch[split:-o].reshape(rank, o)
         w[-1] += patch[-o:]
+    elif method == BLEND_METHOD:
+        if patch.shape != (w.size,):
+            raise ValueError(f"Invalid {method} patch shape {patch.shape}")
+        w += patch.reshape(w.shape)
     elif method == "drift_basis" and patch.shape == (len(decoder.basis),):
         w += np.einsum("k,kfo->fo", patch, decoder.basis)
     else:

@@ -404,6 +404,15 @@ pub fn emit_transformer_python(t: &QuantizedTransformer, name: &str) -> String {
         lines.push(format!("w_o_{} = {}", li, vec_python_precise(&layer.w_o)));
         lines.push(format!("w_ff_in_{} = {}", li, vec_python_precise(&layer.w_ff_in)));
         lines.push(format!("w_ff_out_{} = {}", li, vec_python_precise(&layer.w_ff_out)));
+        for (bias_name, bias) in [
+            ("b_q", &layer.b_q), ("b_k", &layer.b_k),
+            ("b_v", &layer.b_v), ("b_o", &layer.b_o),
+            ("b_ff_in", &layer.b_ff_in), ("b_ff_out", &layer.b_ff_out),
+        ] {
+            if let Some(bias) = bias {
+                lines.push(format!("{}_{} = {}", bias_name, li, vec_python_precise(bias)));
+            }
+        }
         lines.push(format!("ln1_gamma_{} = {}", li, vec_python(&layer.ln1_gamma)));
         lines.push(format!("ln1_beta_{} = {}", li, vec_python(&layer.ln1_beta)));
         lines.push(format!("ln2_gamma_{} = {}", li, vec_python(&layer.ln2_gamma)));
@@ -438,6 +447,11 @@ fn emit_layer_python(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize,
     lines.push(format!("    v = [[0.0] * {} for _ in range(seq_len)]", d_model));
     lines.push("    for i in range(seq_len):".to_string());
     lines.push(format!("        for j in range({}):", d_model));
+    for (projection, bias) in [("q", &layer.b_q), ("k", &layer.b_k), ("v", &layer.b_v)] {
+        if bias.is_some() {
+            lines.push(format!("            {}[i][j] = b_{}_{}[j]", projection, projection, li));
+        }
+    }
     lines.push(format!("            for h_idx in range({}):", d_model));
     lines.push(format!("                q[i][j] += x[i][h_idx] * w_q_{}[h_idx * {} + j]", li, d_model));
     lines.push(format!("                k[i][j] += x[i][h_idx] * w_k_{}[h_idx * {} + j]", li, d_model));
@@ -467,6 +481,9 @@ fn emit_layer_python(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize,
     lines.push(format!("    attn_proj = [[0.0] * {} for _ in range(seq_len)]", d_model));
     lines.push("    for i in range(seq_len):".to_string());
     lines.push(format!("        for j in range({}):", d_model));
+    if layer.b_o.is_some() {
+        lines.push(format!("            attn_proj[i][j] = b_o_{}[j]", li));
+    }
     lines.push(format!("            for h_idx in range({}):", d_model));
     lines.push(format!("                attn_proj[i][j] += attn_out[i][h_idx] * w_o_{}[h_idx * {} + j]", li, d_model));
 
@@ -484,6 +501,9 @@ fn emit_layer_python(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize,
     lines.push("        # FFN layer 1".to_string());
     lines.push(format!("        hidden_ff = [0.0] * {}", layer.d_ff));
     lines.push(format!("        for j in range({}):", layer.d_ff));
+    if layer.b_ff_in.is_some() {
+        lines.push(format!("            hidden_ff[j] = b_ff_in_{}[j]", li));
+    }
     lines.push(format!("            for i in range({}):", d_model));
     lines.push(format!("                hidden_ff[j] += h[i] * w_ff_in_{}[i * {} + j]", li, layer.d_ff));
     lines.push("        # Activation".to_string());
@@ -495,6 +515,9 @@ fn emit_layer_python(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize,
     lines.push("        # FFN layer 2".to_string());
     lines.push(format!("        out = [0.0] * {}", d_model));
     lines.push(format!("        for j in range({}):", d_model));
+    if layer.b_ff_out.is_some() {
+        lines.push(format!("            out[j] = b_ff_out_{}[j]", li));
+    }
     lines.push(format!("            for i in range({}):", layer.d_ff));
     lines.push(format!("                out[j] += hidden_ff[i] * w_ff_out_{}[i * {} + j]", li, d_model));
     lines.push("        ffn_out.append(out)".to_string());
@@ -563,7 +586,7 @@ pub fn emit_transformer_rust(t: &QuantizedTransformer, name: &str) -> String {
     // Embeddings
     lines.push("    // Token + position embeddings".to_string());
     lines.push("    let mut hidden: Vec<Vec<f64>> = tokens.iter().enumerate().map(|(i, &tok)| {".to_string());
-    lines.push("        let mut emb = TOKEN_EMB[tok].clone();".to_string());
+    lines.push("        let mut emb = TOKEN_EMB[tok].to_vec();".to_string());
     if t.pos_emb.is_some() {
         lines.push(format!("        for j in 0..{} {{ emb[j] += POS_EMB[i][j]; }}", t.d_model));
     }
@@ -615,6 +638,15 @@ pub fn emit_transformer_rust(t: &QuantizedTransformer, name: &str) -> String {
         lines.push(format!("const W_O_{}: &[f64] = &{};", li, vec_rust(&layer.w_o)));
         lines.push(format!("const W_FF_IN_{}: &[f64] = &{};", li, vec_rust(&layer.w_ff_in)));
         lines.push(format!("const W_FF_OUT_{}: &[f64] = &{};", li, vec_rust(&layer.w_ff_out)));
+        for (bias_name, bias) in [
+            ("B_Q", &layer.b_q), ("B_K", &layer.b_k),
+            ("B_V", &layer.b_v), ("B_O", &layer.b_o),
+            ("B_FF_IN", &layer.b_ff_in), ("B_FF_OUT", &layer.b_ff_out),
+        ] {
+            if let Some(bias) = bias {
+                lines.push(format!("const {}_{}: &[f64] = &{};", bias_name, li, vec_rust(bias)));
+            }
+        }
         lines.push(format!("const LN1_GAMMA_{}: &[f64] = &{};", li, vec_rust(&layer.ln1_gamma)));
         lines.push(format!("const LN1_BETA_{}: &[f64] = &{};", li, vec_rust(&layer.ln1_beta)));
         lines.push(format!("const LN2_GAMMA_{}: &[f64] = &{};", li, vec_rust(&layer.ln2_gamma)));
@@ -646,17 +678,20 @@ fn emit_layer_rust(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize, d
     // Q, K, V projections
     lines.push("    let q: Vec<Vec<f64>> = x.iter().map(|row| {".to_string());
     lines.push(format!("        (0..{}).map(|j| {{", d_model));
-    lines.push(format!("            (0..{}).map(|i| row[i] * W_Q_{}[i * {} + j]).sum()", d_model, li, d_model));
+    let bias = if layer.b_q.is_some() { format!(" + B_Q_{}[j]", li) } else { String::new() };
+    lines.push(format!("            (0..{}).map(|i| row[i] * W_Q_{}[i * {} + j]).sum::<f64>(){}", d_model, li, d_model, bias));
     lines.push("        }).collect()".to_string());
     lines.push("    }).collect();".to_string());
     lines.push("    let k: Vec<Vec<f64>> = x.iter().map(|row| {".to_string());
     lines.push(format!("        (0..{}).map(|j| {{", d_model));
-    lines.push(format!("            (0..{}).map(|i| row[i] * W_K_{}[i * {} + j]).sum()", d_model, li, d_model));
+    let bias = if layer.b_k.is_some() { format!(" + B_K_{}[j]", li) } else { String::new() };
+    lines.push(format!("            (0..{}).map(|i| row[i] * W_K_{}[i * {} + j]).sum::<f64>(){}", d_model, li, d_model, bias));
     lines.push("        }).collect()".to_string());
     lines.push("    }).collect();".to_string());
     lines.push("    let v: Vec<Vec<f64>> = x.iter().map(|row| {".to_string());
     lines.push(format!("        (0..{}).map(|j| {{", d_model));
-    lines.push(format!("            (0..{}).map(|i| row[i] * W_V_{}[i * {} + j]).sum()", d_model, li, d_model));
+    let bias = if layer.b_v.is_some() { format!(" + B_V_{}[j]", li) } else { String::new() };
+    lines.push(format!("            (0..{}).map(|i| row[i] * W_V_{}[i * {} + j]).sum::<f64>(){}", d_model, li, d_model, bias));
     lines.push("        }).collect()".to_string());
     lines.push("    }).collect();".to_string());
 
@@ -671,7 +706,7 @@ fn emit_layer_rust(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize, d
     lines.push(format!("                for d in 0..{} {{", head_dim));
     lines.push("                    scores[i][j] += q[i][h_off + d] * k[j][h_off + d];".to_string());
     lines.push("                }".to_string());
-    lines.push(format!("                scores[i][j] /= {}; // sqrt(head_dim)", (head_dim as f64).sqrt()));
+    lines.push(format!("                scores[i][j] /= {}; // sqrt(head_dim)", fmt_float_precise((head_dim as f64).sqrt())));
     lines.push("            }".to_string());
     lines.push("        }".to_string());
     lines.push("        // Softmax".to_string());
@@ -690,7 +725,8 @@ fn emit_layer_rust(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize, d
     lines.push("    // Output projection".to_string());
     lines.push("    let attn_proj: Vec<Vec<f64>> = attn_out.iter().map(|row| {".to_string());
     lines.push(format!("        (0..{}).map(|j| {{", d_model));
-    lines.push(format!("            (0..{}).map(|i| row[i] * W_O_{}[i * {} + j]).sum()", d_model, li, d_model));
+    let bias = if layer.b_o.is_some() { format!(" + B_O_{}[j]", li) } else { String::new() };
+    lines.push(format!("            (0..{}).map(|i| row[i] * W_O_{}[i * {} + j]).sum::<f64>(){}", d_model, li, d_model, bias));
     lines.push("        }).collect()".to_string());
     lines.push("    }).collect();".to_string());
 
@@ -706,7 +742,8 @@ fn emit_layer_rust(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize, d
     lines.push("    let ffn_out: Vec<Vec<f64>> = x.iter().map(|h| {".to_string());
     lines.push(format!("        // FFN layer 1: {} -> {}", d_model, layer.d_ff));
     lines.push(format!("        let hidden_ff: Vec<f64> = (0..{}).map(|j| {{", layer.d_ff));
-    lines.push(format!("            (0..{}).map(|i| h[i] * W_FF_IN_{}[i * {} + j]).sum()", d_model, li, layer.d_ff));
+    let bias = if layer.b_ff_in.is_some() { format!(" + B_FF_IN_{}[j]", li) } else { String::new() };
+    lines.push(format!("            (0..{}).map(|i| h[i] * W_FF_IN_{}[i * {} + j]).sum::<f64>(){}", d_model, li, layer.d_ff, bias));
     lines.push("        }).collect();".to_string());
     lines.push("        // Activation".to_string());
     if layer.gelu {
@@ -716,7 +753,8 @@ fn emit_layer_rust(lines: &mut Vec<String>, layer: &QuantizedLayer, li: usize, d
     }
     lines.push(format!("        // FFN layer 2: {} -> {}", layer.d_ff, d_model));
     lines.push(format!("        (0..{}).map(|j| {{", d_model));
-    lines.push(format!("            (0..{}).map(|i| hidden_ff[i] * W_FF_OUT_{}[i * {} + j]).sum()", layer.d_ff, li, d_model));
+    let bias = if layer.b_ff_out.is_some() { format!(" + B_FF_OUT_{}[j]", li) } else { String::new() };
+    lines.push(format!("            (0..{}).map(|i| hidden_ff[i] * W_FF_OUT_{}[i * {} + j]).sum::<f64>(){}", layer.d_ff, li, d_model, bias));
     lines.push("        }).collect()".to_string());
     lines.push("    }).collect();".to_string());
 
@@ -733,7 +771,7 @@ fn vec_rust(v: &[f64]) -> String {
 }
 
 fn vec2d_rust(v: &[Vec<f64>]) -> String {
-    let rows: Vec<String> = v.iter().map(|row| vec_rust(row)).collect();
+    let rows: Vec<String> = v.iter().map(|row| format!("&{}", vec_rust(row))).collect();
     format!("[{}]", rows.join(", "))
 }
 
@@ -1150,111 +1188,41 @@ pub fn decompile_transformer_circuit(t: &QuantizedTransformer) -> TransformerCir
     }
 }
 
-/// Emit circuit as Python with interpreted patterns
+/// Emit a non-executable heuristic circuit analysis, not a forward pass.
 pub fn emit_transformer_circuit(t: &QuantizedTransformer, name: &str) -> String {
     let circuit = decompile_transformer_circuit(t);
     let mut lines = Vec::new();
 
-    lines.push(format!("# Circuit Decompilation: {}", name));
-    lines.push(format!("# {} layers, d_model={}, heads={}, vocab={}",
-        t.n_layers, t.d_model,
-        t.layers[0].n_heads, t.vocab_size));
-    lines.push(String::new());
+    lines.push(format!("# Heuristic circuit analysis: {}", name));
+    lines.push("# NOT EXECUTABLE: inferred patterns, not circuit execution or a verified model.".to_string());
+    lines.push("# Use --format python or --format rust for executable source.".to_string());
+    lines.push(format!("# {} layers, d_model={}, vocab={}", t.n_layers, t.d_model, t.vocab_size));
 
-    // Emit circuit structure
     for li in 0..t.n_layers {
+        lines.push(String::new());
         lines.push(format!("# === Layer {} ===", li));
-
-        // Attention heads
-        lines.push(format!("class Layer{}Attention:", li));
         for (h, pattern) in circuit.head_patterns[li].iter().enumerate() {
-            lines.push(format!("    # Head {}: {}", h, pattern));
-            match pattern {
-                HeadPattern::PrevToken => {
-                    lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push("        # Attends to position q_pos - 1".to_string());
-                    lines.push("        return 1.0 if k_pos == q_pos - 1 else 0.0".to_string());
-                }
-                HeadPattern::FirstToken => {
-                    lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push("        # Always attends to position 0".to_string());
-                    lines.push("        return 1.0 if k_pos == 0 else 0.0".to_string());
-                }
-                HeadPattern::CurrentToken => {
-                    lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push("        # Attends to self".to_string());
-                    lines.push("        return 1.0 if k_pos == q_pos else 0.0".to_string());
-                }
-                HeadPattern::PositionalShift(n) => {
-                    lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push(format!("        # Attends to position q_pos + {}", n));
-                    lines.push(format!("        return 1.0 if k_pos == q_pos + {} else 0.0", n));
-                }
-                HeadPattern::Uniform => {
-                    lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push("        # Uniform attention to all positions".to_string());
-                    lines.push("        return 1.0 / seq_len".to_string());
-                }
-                HeadPattern::ContentSensitive => {
-                    lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push("        # Content-sensitive: attention varies by token ID".to_string());
-                    lines.push("        # (Detected via testing with different token values)".to_string());
-                    lines.push("        return attention_by_token_match(q_token, k_token)".to_string());
-                }
-                HeadPattern::Mixed => {
-                    lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push("        # Mixed attention pattern".to_string());
-                    lines.push("        return 1.0 / (abs(q_pos - k_pos) + 1)".to_string());
-                }
-                _ => {
-                    lines.push(format!("    def head_{}(self, q_pos, k_pos):", h));
-                    lines.push("        # Complex attention pattern (run trace to analyze)".to_string());
-                    lines.push("        return softmax(Q[q_pos] @ K[k_pos].T)".to_string());
-                }
-            }
-            lines.push(String::new());
+            lines.push(format!("# Head {}: {} (heuristic)", h, pattern));
         }
 
-        // FFN circuit
         let n_important = circuit.important_neurons[li].len();
         let n_dead = t.layers[li].d_ff - n_important;
-        lines.push(format!("    # FFN: {} important, {} dead neurons", n_important, n_dead));
-
+        lines.push(format!("# FFN: {} important, {} inactive by heuristic", n_important, n_dead));
         for &n in &circuit.important_neurons[li][..n_important.min(10)] {
             let ffn = &circuit.ffn_circuits[li][n];
-            lines.push(format!("    # Neuron {}: {}", n, ffn.pattern_type));
+            lines.push(format!("# Neuron {}: {} (heuristic)", n, ffn.pattern_type));
             if !ffn.top_inputs.is_empty() {
-                let input_str: String = ffn.top_inputs.iter()
+                let input_str = ffn.top_inputs.iter()
                     .map(|(i, w)| format!("h[{}]*{:.3}", i, w))
                     .collect::<Vec<_>>()
                     .join(" + ");
-                lines.push(format!("    #   computes: {} > 0 ? GELU : 0", input_str));
+                lines.push(format!("#   top weighted inputs: {}", input_str));
             }
         }
         if n_important > 10 {
-            lines.push(format!("    # ... and {} more neurons", n_important - 10));
+            lines.push(format!("# ... and {} more neurons", n_important - 10));
         }
-
-        lines.push(String::new());
     }
-
-    // Full execution model
-    lines.push(format!("def {}_circuit(tokens):", name));
-    lines.push("    \"\"\"Full circuit execution.\"\"\"".to_string());
-    lines.push("    # Token embeddings".to_string());
-    lines.push("    hidden = [TOKEN_EMB[t] for t in tokens]".to_string());
-    lines.push(String::new());
-
-    for li in 0..t.n_layers {
-        lines.push(format!("    # Layer {}", li));
-        lines.push(format!("    attn = Layer{}Attention()", li));
-        lines.push("    # ... multi-head attention ...".to_string());
-        lines.push(format!("    # ... FFN with {} important neurons ...", circuit.important_neurons[li].len()));
-        lines.push(String::new());
-    }
-
-    lines.push("    # Output projection".to_string());
-    lines.push("    return logits".to_string());
 
     lines.join("\n") + "\n"
 }

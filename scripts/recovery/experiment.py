@@ -11,7 +11,8 @@ import time
 import numpy as np
 
 from data import load_sessions, prepare
-from model import METHODS, adapt, causal_features, fit_base, score
+from model import (BLEND_METHOD, METHODS, REPAIR_METHOD, adapt, fit_base, score,
+                   smooth, stacked_features)
 
 ROOT = Path(__file__).resolve().parents[2]
 PROTOCOL = ROOT / "examples/recovery/protocol.json"
@@ -31,10 +32,23 @@ def save_json(path, payload, compact=False):
 
 def group_days(sessions, protocol):
     groups = defaultdict(list)
+    taus = protocol["filter"]["taus_ms"]
     for session in sessions:
-        features = causal_features(session.counts, protocol["bin_ms"], protocol["filter"]["tau_ms"])
+        features = stacked_features(session.counts, protocol["bin_ms"], taus)
         groups[session.day].append((session, features))
     return dict(sorted(groups.items()))
+
+
+def smoothed_scores(decoder, blocks, weights, beta):
+    """Score with the uniform causal prediction smoother, reset per block."""
+    truths, predictions = [], []
+    for s, features in blocks:
+        p = decoder.predict(features, weights)
+        if beta < 1:
+            p = smooth(p, beta)
+        truths.append(s.targets[s.mask])
+        predictions.append(p[s.mask])
+    return score(np.concatenate(truths), np.concatenate(predictions))
 
 
 def scored_rows(blocks):
@@ -85,15 +99,15 @@ def choose(protocol, training, validation):
     for index in range(3, len(days)):
         day = days[index]
         train = {d: scored_rows(training[d]) for d in days[:index]}
-        evaluation = scored_rows(validation[day])
-        folds.append((day, train, evaluation))
+        folds.append((day, train, validation[day]))
+    beta = protocol["output_smoothing"]["beta"]
     base_results, base_cache = [], {}
     for alpha in protocol["base_ridge_alphas"]:
         scores = []
-        for day, train, (vx, vy) in folds:
+        for day, train, blocks in folds:
             decoder = fit_base(train, alpha)
             base_cache[alpha, day] = decoder
-            scores.append(score(vy, decoder.predict(vx))[0])
+            scores.append(smoothed_scores(decoder, blocks, decoder.weights, beta)[0])
         base_results.append({"alpha": alpha, "mean_r2": float(np.mean(scores)), "day_scores": scores})
     base_alpha = max(base_results, key=lambda row: row["mean_r2"])["alpha"]
     print(f"SOURCE selection: base alpha={base_alpha}", flush=True)
@@ -105,11 +119,11 @@ def choose(protocol, training, validation):
             candidates = []
             for alpha in alphas:
                 scores = []
-                for day, _, (vx, vy) in folds:
+                for day, _, blocks in folds:
                     decoder = base_cache[base_alpha, day]
                     cx, cy, all_x = calibration_prefix(training[day], budget, protocol["bin_ms"])
                     weights, _, _, _ = adapt(decoder, cx, cy, all_x, method, alpha)
-                    scores.append({"day": day, "r2": score(vy, decoder.predict(vx, weights))[0]})
+                    scores.append({"day": day, "r2": smoothed_scores(decoder, blocks, weights, beta)[0]})
                 candidates.append({"method": method, "budget_seconds": budget, "alpha": alpha,
                                    "mean_r2": float(np.mean([s["r2"] for s in scores])), "day_scores": scores})
             best = max(candidates, key=lambda row: row["mean_r2"])
@@ -120,10 +134,22 @@ def choose(protocol, training, validation):
     applied_overrides = apply_alpha_overrides(protocol, choices)
     eligible = [r for r in validation_rows if r["budget_seconds"] == budget]
     candidate = max((r for r in eligible if r["method"] in protocol["candidate_methods"]), key=lambda r: r["mean_r2"])
+    deployed = protocol.get("reused_data_deployed_candidate")
+    if deployed:
+        if deployed not in protocol["candidate_methods"]:
+            raise ValueError(f"Deployed candidate is not an admitted candidate: {deployed}")
+        print(f"OVERRIDE deployed candidate={deployed} (leaderboard-informed, reused data)", flush=True)
+        # Validation rows record dev-optimal alphas only; the deployed alpha
+        # comes from the override and is recorded in choices and overrides.
+        template = next(r for r in eligible if r["method"] == deployed)
+        candidate = dict(template, alpha=choices[deployed][str(budget)])
     baseline = max((r for r in eligible if r["method"] in protocol["baseline_methods"]), key=lambda r: r["mean_r2"])
+    source_candidate = max((r for r in eligible if r["method"] in protocol["candidate_methods"]), key=lambda r: r["mean_r2"])
     return {"base_alpha": base_alpha, "adaptation_alphas": choices,
             "reused_data_alpha_overrides": applied_overrides,
-            "later_day_labels_used_for_selection": bool(applied_overrides),
+            "reused_data_deployed_candidate": protocol.get("reused_data_deployed_candidate"),
+            "source_selected_candidate": source_candidate["method"],
+            "later_day_labels_used_for_selection": bool(applied_overrides or deployed),
             "method": candidate["method"], "baseline": baseline["method"],
             "budget_seconds": budget, "base_validation": base_results,
             "validation": validation_rows, "fold_days": [f[0] for f in folds],
@@ -142,29 +168,34 @@ def evaluate(protocol, selection, decoder, calibration, evaluation):
     budgets = protocol["calibration_budgets_seconds"]
     step = 5
     for day, blocks in evaluation.items():
-        vx, vy = scored_rows(blocks)
         day_scores, predictions, full_predictions = [], {}, {}
         prefixes = {budget: calibration_prefix(calibration[day], budget, protocol["bin_ms"]) for budget in budgets}
+        beta = protocol["output_smoothing"]["beta"]
         for method in [m["id"] for m in METHODS]:
             predictions[method] = {}
             for budget in budgets:
                 alpha = selection["adaptation_alphas"][method][str(budget)]
                 weights, count, milliseconds, patch = adapt(decoder, *prefixes[budget], method, alpha)
-                predicted = decoder.predict(vx, weights)
+                # The smoother is part of the deployed decoder: applied to every
+                # bin of each block, reset at recording boundaries, before masking.
+                block_predictions = [decoder.predict(features, weights) if beta >= 1 else smooth(decoder.predict(features, weights), beta)
+                                     for _, features in blocks]
+                vx = np.concatenate([f[s.mask] for s, f in blocks])
+                vy = np.concatenate([s.targets[s.mask] for s, _ in blocks])
+                predicted = np.concatenate([p[s.mask] for p, (s, _) in zip(block_predictions, blocks)])
                 r2, per_output = score(vy, predicted)
                 day_scores.append({"method": method, "budget_seconds": budget, "r2": r2,
                                    "per_dimension_r2": per_output, "fit_ms": milliseconds,
                                    "adapted_parameters": count, "scored_calibration_bins": len(prefixes[budget][0])})
                 if method != "frozen" or budget == 0:
-                    all_pred = [decoder.predict(features, weights) for _, features in blocks]
-                    predictions[method][str(budget)] = display_array(np.concatenate([p[::step] for p in all_pred]))
+                    predictions[method][str(budget)] = display_array(np.concatenate([p[::step] for p in block_predictions]))
                 if method == selection["method"] and budget == selection["budget_seconds"]:
                     slope, bias = decoder.folded(weights)
                     model_id = len(compiled_models)
                     compiled_models.append({"day": day, "method": method, "budget_seconds": budget,
                                             "slope": slope, "bias": bias, "patch": patch})
-                    for (session, features) in blocks:
-                        compiled_cases.append((model_id, session.counts, decoder.predict(features, weights)))
+                    for block_index, (session, features) in enumerate(blocks):
+                        compiled_cases.append((model_id, session.counts, block_predictions[block_index]))
             print(f"EVAL {day} {method:14} " + " ".join(f"{r['budget_seconds']}s:{r['r2']:.4f}" for r in day_scores if r['method'] == method), flush=True)
         truth, masks, breaks, seconds = [], [], [], []
         offset = 0.
@@ -235,7 +266,9 @@ def main():
         "methods": METHODS,
         "selected": {"method": selection["method"], "budget_seconds": selection["budget_seconds"],
                      "baseline": selection["baseline"], "hyperparameters": {"base_alpha": selection["base_alpha"],
-                     "adaptation_alphas": selection["adaptation_alphas"]}},
+                     "adaptation_alphas": selection["adaptation_alphas"]},
+                     "candidate_methods": protocol["candidate_methods"],
+                     "baseline_methods": protocol["baseline_methods"]},
         "summary": summary, "sessions": sessions, "compiled_validation": compiled,
         "file_splits": {"calibration": {d: [s.key for s, _ in b] for d, b in calibration.items()},
                         "evaluation": {d: [s.key for s, _ in b] for d, b in evaluation.items()}},

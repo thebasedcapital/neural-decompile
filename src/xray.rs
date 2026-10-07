@@ -643,6 +643,7 @@ pub struct TransformerXrayReport {
     pub max_seq_len: usize,
     pub pct_integer: f64,
     pub total_params: usize,
+    pub eps: f64,
     pub per_layer: Vec<TransformerLayerXray>,
     pub python_code: String,
 }
@@ -658,10 +659,10 @@ pub struct TransformerLayerXray {
 }
 
 /// Run transformer xray analysis
-pub fn run_transformer_xray(t: &Transformer, name: &str, tests: Option<&[crate::verify::TransformerTest]>) -> TransformerXrayReport {
+pub fn run_transformer_xray(t: &Transformer, name: &str, tests: Option<&[crate::verify::TransformerTest]>, eps: f64) -> TransformerXrayReport {
     use crate::quantize::transformer_stats;
 
-    let quantized = crate::quantize::quantize_transformer(t, 0.001);
+    let quantized = crate::quantize::quantize_transformer(t, eps);
     let stats = transformer_stats(&quantized);
 
     // Analyze each layer
@@ -747,6 +748,7 @@ pub fn run_transformer_xray(t: &Transformer, name: &str, tests: Option<&[crate::
         max_seq_len: t.max_seq_len,
         pct_integer: stats.pct_integer * 100.0,
         total_params,
+        eps,
         per_layer,
         python_code: emit::emit_transformer_python(&quantized, name),
     }
@@ -778,8 +780,8 @@ pre {{ background: #0d1117; padding: 12px; border-radius: 6px; overflow-x: auto;
 </head>
 <body>
 <h1>nd xray — {name}</h1>
-<div class="subtitle">Transformer Analysis Report</div>
-"#, name = report.name));
+<div class="subtitle">Transformer Analysis Report (quantization eps={eps}; layer traces use original weights)</div>
+"#, name = report.name, eps = report.eps));
 
     // Stats
     let int_class = if report.pct_integer >= 95.0 { "green" } else if report.pct_integer >= 75.0 { "yellow" } else { "red" };
@@ -820,9 +822,9 @@ pub fn format_transformer_xray(report: &TransformerXrayReport) -> String {
     out.push_str(&format!("═══ TRANSFORMER XRAY: {} ═══\n", report.name));
     out.push_str(&format!("  layers={} d_model={} vocab={} seq_len={}\n",
         report.n_layers, report.d_model, report.vocab_size, report.max_seq_len));
-    out.push_str(&format!("  params={} integer={:.0}%\n\n", report.total_params, report.pct_integer));
+    out.push_str(&format!("  params={} integer={:.0}% eps={}\n\n", report.total_params, report.pct_integer, report.eps));
 
-    out.push_str("── Per-Layer Analysis ──\n");
+    out.push_str("── Per-Layer Analysis (original weights) ──\n");
     for layer in &report.per_layer {
         out.push_str(&format!("  L{}: {} heads × {} dims, FFN {}\n",
             layer.layer_idx, layer.n_heads, layer.head_dim, layer.d_ff));

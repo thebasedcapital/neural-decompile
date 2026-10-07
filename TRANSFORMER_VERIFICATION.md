@@ -1,19 +1,22 @@
 # Transformer decompilation and verification
 
-`nd` supports the transformer JSON schema in `src/transformer.rs`: token/position embeddings, attention projections, feed-forward layers, optional layer normalization, and output projection. It emits Python or Rust for that schema. GGUF tensor inspection is a separate capability; it does not supply general end-to-end transformer decompilation.
+`nd` supports the transformer JSON schema in `src/transformer.rs`: token/position embeddings, attention projections, feed-forward layers, optional layer normalization, and output projection. Python and Rust emission includes all six optional block biases (`b_q`, `b_k`, `b_v`, `b_o`, `b_ff_in`, `b_ff_out`). GGUF tensor inspection is a separate capability; it does not supply general end-to-end transformer decompilation.
 
 ## Reproduce with a checked-in model
 
-Use an explicit epsilon when comparing generation and verification so both operations quantize the same weights:
+`decompile`, `verify`, and `xray` all honor `--eps` and share the same architecture default (0.01 for transformers, 0.15 for RNNs). Use an explicit epsilon when comparing generation and verification:
 
 ```bash
 cargo build --release
 target/release/nd decompile examples/parity_transformer.json --eps 0.001 --format python --output /tmp/parity_transformer.py
 target/release/nd decompile examples/parity_transformer.json --eps 0.001 --format rust --output /tmp/parity_transformer.rs
 target/release/nd verify examples/parity_transformer.json examples/parity_transformer_tests.json --eps 0.001
+target/release/nd xray examples/parity_transformer.json examples/parity_transformer_tests.json --eps 0.001
 ```
 
 Snapping small embedding values to zero can change predictions. Epsilon is a modeling choice, not a guarantee of fidelity. A weight outside the snap threshold remains floating-point.
+
+Transformer xray weight statistics and emitted source use the requested epsilon; the per-layer attention and activation trace analysis uses original weights and is labeled accordingly. `scripts/bench.sh` explicitly passes `TRANSFORMER_EPS` (default 0.01) and `RNN_EPS` (default 0.15). Its expected-failure column captures the deliberately failing RNN tasks `bitwise_xor` and `mod5`; other failed verification exits abort generation.
 
 ## What `verify` checks
 
@@ -26,7 +29,15 @@ For each token sequence:
 
 The tolerance is **not relative 1% error**, and passing is **not numerical identity**. Classification agreement must be checked separately: even a small logit perturbation can reverse the winning class near a tie.
 
+The command exits **0 only if a nonempty fixture set passes every check**. Any failed fixture or an empty array prints a `FAIL` summary and exits **1**. An empty set cannot produce a `PERFECT` result.
+
 `verify` does not compile or execute the emitted source. Behavioral tests and explicit generated-program runs cover that separate boundary. A successful finite fixture evaluation is not a formal proof over arbitrary token sequences.
+
+Behavioral coverage executes Python and compiles/runs generated Rust on the eight parity fixture sequences, comparing every position's logits to the internal quantized runtime with absolute error < 1e-9. It covers the checked-in model and variants with all six block biases, head dimension 1, and ReLU/GELU activation.
+
+## Circuit analysis is not execution
+
+`--format circuit` emits a comment-only **heuristic analysis, not executable source**. Attention pattern names come from sampled inputs; FFN summaries identify selected weights/neurons by heuristics. The output does not implement a forward pass or establish correctness of those inferred patterns. Use `--format python` or `--format rust` to emit an executable model.
 
 ## Implementation
 

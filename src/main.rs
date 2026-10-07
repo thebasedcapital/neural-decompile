@@ -45,9 +45,9 @@ enum Commands {
         #[arg()]
         tests: PathBuf,
 
-        /// Quantization epsilon
-        #[arg(short, long, default_value = "0.15")]
-        eps: f64,
+        /// Quantization epsilon. Default: 0.15 for RNNs, 0.01 for transformers
+        #[arg(short, long)]
+        eps: Option<f64>,
     },
 
     /// Show weight statistics (% integer, dead neurons, sparsity)
@@ -184,9 +184,9 @@ enum Commands {
         #[arg()]
         tests: Option<PathBuf>,
 
-        /// Quantization epsilon
-        #[arg(short, long, default_value = "0.15")]
-        eps: f64,
+        /// Quantization epsilon. Default: 0.15 for RNNs, 0.01 for transformers
+        #[arg(short, long)]
+        eps: Option<f64>,
 
         /// Output as HTML (opens in browser)
         #[arg(long)]
@@ -274,6 +274,13 @@ enum Commands {
     },
 }
 
+fn default_eps(program: &weights::NeuralProgram) -> f64 {
+    match program {
+        weights::NeuralProgram::Rnn(_) => 0.15,
+        weights::NeuralProgram::Transformer(_) => 0.01,
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -281,13 +288,7 @@ fn main() -> Result<()> {
         Commands::Decompile { input, eps, format, output } => {
             let program = weights::load_neural_program(&input)?;
 
-            // Auto-select epsilon based on model type if not specified
-            let eps = eps.unwrap_or({
-                match &program {
-                    weights::NeuralProgram::Rnn(_) => 0.15,
-                    weights::NeuralProgram::Transformer(_) => 0.01,
-                }
-            });
+            let eps = eps.unwrap_or_else(|| default_eps(&program));
 
             let code = match &program {
                 weights::NeuralProgram::Rnn(rnn) => {
@@ -336,6 +337,7 @@ fn main() -> Result<()> {
 
         Commands::Verify { input, tests, eps } => {
             let program = weights::load_neural_program(&input)?;
+            let eps = eps.unwrap_or_else(|| default_eps(&program));
 
             match program {
                 weights::NeuralProgram::Rnn(rnn) => {
@@ -345,14 +347,17 @@ fn main() -> Result<()> {
 
                     println!("Verification: {}/{} passed ({:.0}%)",
                             results.passed, results.total,
-                            results.passed as f64 / results.total as f64 * 100.0);
+                            results.passed as f64 / results.total.max(1) as f64 * 100.0);
                     for fail in &results.failures {
                         println!("  FAIL: input={:?} expected={} got={}",
                                 fail.input, fail.expected, fail.got);
                     }
 
-                    if results.passed == results.total {
+                    if results.is_success() {
                         println!("✓ PERFECT — decompiled FSM matches all test cases");
+                    } else {
+                        println!("FAIL — verification failed ({}/{} passed)", results.passed, results.total);
+                        anyhow::bail!(if results.total == 0 { "Test set is empty" } else { "Fixture verification failed" });
                     }
                 }
                 weights::NeuralProgram::Transformer(t) => {
@@ -360,22 +365,23 @@ fn main() -> Result<()> {
                     let data = std::fs::read_to_string(&tests)?;
                     let test_cases: Vec<verify::TransformerTest> = serde_json::from_str(&data)?;
 
-                    // Verify using minimal quantization to preserve embeddings
-                    // (embeddings have small values that get snapped to 0 with eps=0.15)
-                    let quantized = quantize::quantize_transformer(&t, 0.001);
+                    let quantized = quantize::quantize_transformer(&t, eps);
                     let results = verify::verify_decompiled_transformer(&t, &quantized, &test_cases);
 
                     println!("Transformer Verification: {}/{} passed ({:.0}%)",
                             results.passed, results.total,
-                            results.passed as f64 / results.total as f64 * 100.0);
+                            results.passed as f64 / results.total.max(1) as f64 * 100.0);
                     for fail in &results.failures {
                         println!("  FAIL: tokens={:?} expected={} got={} logits={:.3?}",
                                 fail.tokens, fail.expected, fail.got,
                                 fail.logits.iter().take(5).collect::<Vec<_>>());
                     }
 
-                    if results.passed == results.total {
+                    if results.is_success() {
                         println!("✓ PERFECT — quantized transformer matches original");
+                    } else {
+                        println!("FAIL — verification failed ({}/{} passed)", results.passed, results.total);
+                        anyhow::bail!(if results.total == 0 { "Test set is empty" } else { "Fixture verification failed" });
                     }
                 }
             }
@@ -731,12 +737,13 @@ fn main() -> Result<()> {
             Ok(())
         }
 
-        Commands::Xray { input, tests, eps: _, html: html_flag } => {
+        Commands::Xray { input, tests, eps, html: html_flag } => {
             let program = weights::load_neural_program(&input)?;
+            let eps = eps.unwrap_or_else(|| default_eps(&program));
 
             match program {
                 weights::NeuralProgram::Rnn(rnn) => {
-                    let quantized = quantize::quantize_rnn(&rnn, 0.15);
+                    let quantized = quantize::quantize_rnn(&rnn, eps);
                     let name = input.file_stem()
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_else(|| "circuit".to_string());
@@ -771,7 +778,7 @@ fn main() -> Result<()> {
                         None => None,
                     };
 
-                    let report = xray::run_transformer_xray(&t, &name, test_cases.as_deref());
+                    let report = xray::run_transformer_xray(&t, &name, test_cases.as_deref(), eps);
 
                     if html_flag {
                         let html_content = xray::render_transformer_html(&report);

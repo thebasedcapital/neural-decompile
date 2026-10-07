@@ -24,6 +24,12 @@ pub struct VerifyResults {
     pub failures: Vec<Failure>,
 }
 
+impl VerifyResults {
+    pub fn is_success(&self) -> bool {
+        self.total > 0 && self.passed == self.total
+    }
+}
+
 pub struct Failure {
     pub input: Vec<Vec<f64>>,
     pub expected: usize,
@@ -34,6 +40,12 @@ pub struct TransformerVerifyResults {
     pub total: usize,
     pub passed: usize,
     pub failures: Vec<TransformerFailure>,
+}
+
+impl TransformerVerifyResults {
+    pub fn is_success(&self) -> bool {
+        self.total > 0 && self.passed == self.total
+    }
 }
 
 pub struct TransformerFailure {
@@ -119,7 +131,7 @@ pub fn verify_decompiled_transformer(
 }
 
 /// Forward pass on quantized transformer
-fn forward_quantized(t: &QuantizedTransformer, tokens: &[usize]) -> Vec<Vec<f64>> {
+pub fn forward_quantized(t: &QuantizedTransformer, tokens: &[usize]) -> Vec<Vec<f64>> {
     let seq_len = tokens.len();
     assert!(seq_len <= t.max_seq_len);
 

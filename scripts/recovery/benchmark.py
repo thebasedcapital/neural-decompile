@@ -23,8 +23,9 @@ def r2(truth, prediction):
 
 def main():
     reference = json.loads((FIXTURES / "reference.json").read_text())
-    if reference["schema_version"] != 1 or reference["budget_seconds"] != 30:
+    if reference["schema_version"] != 2 or reference["budget_seconds"] != 30:
         raise ValueError("Unexpected frozen benchmark protocol")
+    beta = reference["smoothing_beta"]
     folds = []
     for fold in reference["folds"]:
         path = FIXTURES / fold["file"]
@@ -57,13 +58,24 @@ def main():
                 restored = model.apply_patch(decoder, method, patch)
                 if not np.allclose(restored, weights, rtol=1e-12, atol=1e-12):
                     raise ValueError(f"Serialized {method} patch does not reproduce fitted weights")
-                # Fixed scoring and normalization are outside the mutable candidate code.
-                design = np.column_stack(((data["evaluation_x"] - data["mean"]) / data["scale"],
-                                          np.ones(len(data["evaluation_x"]))))
-                prediction = (design @ weights) * data["target_scale"] + data["target_mean"]
-                if not np.isfinite(prediction).all():
-                    raise ValueError(f"Non-finite {method} predictions")
-                scores.append({"day": day, "r2": r2(data["evaluation_y"], prediction)})
+                # Fixed scoring, normalization, and smoothing are outside the
+                # mutable candidate code; the smoother resets per block.
+                block_truths, block_predictions = [], []
+                for key in sorted(k for k in data if k.startswith("evaluation_x_")):
+                    index = key.rsplit("_", 1)[1]
+                    features = data[f"evaluation_x_{index}"]
+                    mask = data[f"evaluation_mask_{index}"].astype(bool)
+                    design = np.column_stack(((features - data["mean"]) / data["scale"],
+                                              np.ones(len(features))))
+                    prediction = (design @ weights) * data["target_scale"] + data["target_mean"]
+                    if beta < 1:
+                        prediction = model.smooth(prediction, beta)
+                    if not np.isfinite(prediction).all():
+                        raise ValueError(f"Non-finite {method} predictions")
+                    block_truths.append(data[f"evaluation_y_{index}"][mask])
+                    block_predictions.append(prediction[mask])
+                scores.append({"day": day, "r2": r2(np.concatenate(block_truths),
+                                                    np.concatenate(block_predictions))})
                 parameters.append(count)
             candidates.append({"method": method, "alpha": alpha,
                                "mean_r2": float(np.mean([s["r2"] for s in scores])),

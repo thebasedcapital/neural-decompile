@@ -19,22 +19,42 @@ use std::io::{self, BufRead, Write};
 struct Decoder {
     history: [[f64; CHANNELS]; TAPS],
     cursor: usize,
+    smoothed: [f64; 7],
+    started: bool,
 }
 impl Decoder {
-    fn new() -> Self { Self { history: [[0.0; CHANNELS]; TAPS], cursor: 0 } }
+    fn new() -> Self { Self { history: [[0.0; CHANNELS]; TAPS], cursor: 0, smoothed: [0.0; 7], started: false } }
     fn step(&mut self, input: [f64; CHANNELS], model: usize) -> [f64; 7] {
         self.history[self.cursor] = input;
-        let mut rates = [0.0; CHANNELS];
-        for (lag, weight) in KERNEL.iter().enumerate() {
-            let row = &self.history[(self.cursor + TAPS - lag) % TAPS];
-            for (rate, count) in rates.iter_mut().zip(row) { *rate += weight * count; }
-        }
         self.cursor = (self.cursor + 1) % TAPS;
         let mut output = BIAS[model];
-        for (rate, row) in rates.iter().zip(&WEIGHTS[model]) {
-            for (value, coefficient) in output.iter_mut().zip(row) { *value += rate * coefficient; }
+        for (tau, kernel) in KERNELS.iter().enumerate() {
+            let length = KERNEL_LENGTHS[tau];
+            let mut rates = [0.0; CHANNELS];
+            for lag in 0..length {
+                let row = &self.history[(self.cursor + TAPS - 1 - lag) % TAPS];
+                let weight = kernel[lag];
+                for (rate, count) in rates.iter_mut().zip(row) { *rate += weight * count; }
+            }
+            let offset = tau * CHANNELS;
+            for (feature, rate) in rates.iter().enumerate() {
+                let row = &WEIGHTS[model][offset + feature];
+                for (value, coefficient) in output.iter_mut().zip(row) { *value += rate * coefficient; }
+            }
         }
-        output
+        // Causal exponential smoothing; resets on decoder construction.
+        let updated = if self.started {
+            let mut updated = [0.0f64; 7];
+            for (index, value) in output.iter().enumerate() {
+                updated[index] = SMOOTH_BETA * value + (1.0 - SMOOTH_BETA) * self.smoothed[index];
+            }
+            updated
+        } else {
+            output
+        };
+        self.smoothed = updated;
+        self.started = true;
+        updated
     }
 }
 
@@ -91,16 +111,27 @@ def compile_and_validate(decoder, models, cases, protocol, destination):
         slope, bias = restored.folded(weights)
         slopes.append(slope.tolist())
         biases.append(bias.tolist())
-    kernel = np.exp(-np.arange(0, protocol["filter"]["tau_ms"], protocol["bin_ms"], dtype=float)
-                    / protocol["filter"]["tau_ms"])
-    kernel /= kernel.sum()
+    taus = protocol["filter"]["taus_ms"]
+    bin_ms = protocol["bin_ms"]
+    kernels, lengths = [], []
+    for tau in taus:
+        kernel = np.exp(-np.arange(0, tau, bin_ms, dtype=float) / tau)
+        kernel /= kernel.sum()
+        kernels.append(kernel.tolist())
+        lengths.append(len(kernel))
+    taps = max(lengths)
+    padded = [row + [0.0] * (taps - len(row)) for row in kernels]
+    beta = protocol["output_smoothing"]["beta"]
     source = "// Generated from pinned human-data model and serialized compact patches.\n"
     source += "// Offline research only. Input: reset MODEL_ID, then one row of neural counts per20ms bin.\n"
     for index, model in enumerate(models):
         source += f"// Model {index}: obfuscated day {model['day']}, {model['method']}, {model['budget_seconds']}s calibration.\n"
-    source += f"const CHANNELS: usize = {len(decoder.mean)};\nconst TAPS: usize = {len(kernel)};\nconst MODELS: usize = {len(models)};\n"
-    source += f"const KERNEL: [f64; TAPS] = {json.dumps(kernel.tolist())};\n"
-    source += f"static WEIGHTS: [[[f64; 7]; CHANNELS]; MODELS] = {json.dumps(slopes)};\n"
+    source += f"const CHANNELS: usize = {cases[0][1].shape[1]};\nconst TAPS: usize = {taps};\nconst MODELS: usize = {len(models)};\n"
+    source += f"const KERNELS: [[f64; TAPS]; {len(taus)}] = {json.dumps(padded)};\n"
+    source += f"const KERNEL_LENGTHS: [usize; {len(taus)}] = {json.dumps(lengths)};\n"
+    source += f"const SMOOTH_BETA: f64 = {beta!r};\n"
+    source += f"const FEATURES: usize = {len(decoder.mean)};\n"
+    source += f"static WEIGHTS: [[[f64; 7]; FEATURES]; MODELS] = {json.dumps(slopes)};\n"
     source += f"static BIAS: [[f64; 7]; MODELS] = {json.dumps(biases)};\n"
     destination.write_text(source + RUNTIME)
     stream = io.StringIO()
