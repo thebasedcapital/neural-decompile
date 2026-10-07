@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "written_before_later_day_evaluation_of_these_configurations": true,
+  "diagnosis": "The original development folds calibrated and evaluated inside one recording (held-in-calib prefix -> held-in-minival tail of the same file). Every later-day evaluation crosses a recording boundary (block 1 prefix -> block 2). Supervised repairs that won within-recording dev folds collapsed across recordings; the dev protocol, not the later days, was mismatched.",
+  "development_protocol": {
+    "name": "cross-recording forward folds",
+    "fold_days": ["19250115", "19250119", "19250120"],
+    "training": "held-in-calib recordings of all preceding held-in days",
+    "calibration": "first 30 s of the fold day's first held-in-calib recording",
+    "evaluation": "the fold day's second held-in-calib recording (a different recording, as on later days)",
+    "later_day_files_opened": 0
+  },
+  "evidence_that_the_protocol_matches_later_days": "Under cross-recording dev folds the previous pipeline's dev-optimal rank-6 alpha moves from 1 to 30-100, and alpha 1 drops to 0.1635 -- the same collapse previously observed on later days -- using held-in data only.",
+  "feature_front_end": {
+    "type": "causal running z-score of every stacked feature",
+    "tau_seconds": 30.0,
+    "initialization": "mean/variance of the first 30 s of the calibration recording (all bins, no labels); training recordings are initialized from their own first 30 s",
+    "update": "per 20 ms bin: d = x - mu; mu += k d; var = (1 - k)(var + k d^2); k = 0.02 / tau; output (x - mu) / sqrt(max(var, 1e-8))",
+    "labels_used": false
+  },
+  "searched_on_development_folds_only": {
+    "tau_seconds": [5, 10, 15, 20, 30, 60, 120, 300],
+    "front_ends": ["global (previous)", "static calibration z-score", "running z-score"],
+    "rank_6_and_anchored_alphas": [1, 10, 30, 100, 300, 1000, 3000]
+  },
+  "frozen_choice": {
+    "candidate": "three_source_separate_bias_rank_6_repair",
+    "alpha": 100.0,
+    "front_end_tau_seconds": 30.0,
+    "budget_seconds": 30,
+    "development_mean_r2": 0.2944,
+    "development_day_r2": [0.277, 0.316, 0.29],
+    "strongest_same_front_end_baseline_dev": {"method": "recenter", "mean_r2": 0.2667},
+    "previous_pipeline_same_dev_folds": {"rank_6_alpha_100": 0.2792, "recenter": 0.2491, "frozen": 0.2266}
+  },
+  "disclosure": "The investigator knew the earlier later-day results when designing this protocol. No later-day labels were computed for any configuration listed here before this file was committed. The later-day evaluation that follows is reused-data evidence, run once for the frozen choice and its matched baselines.",
+  "stop_condition": "If the frozen choice does not beat the strongest matched baseline on the seven later days, report that failure and do not reselect."
+}
