@@ -1,8 +1,20 @@
-# nd — Neural Decompiler
+<h1 align="center">nd — Neural Decompiler</h1>
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19339860.svg)](https://doi.org/10.5281/zenodo.19339860)
+<p align="center"><b>Self-stabilizing, auditable brain-computer-interface decoders — compiled to streaming Rust.</b></p>
+
+<p align="center">
+  <a href="https://github.com/thebasedcapital/neural-decompile/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/thebasedcapital/neural-decompile/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://doi.org/10.5281/zenodo.19339860"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.19339860.svg"></a>
+  <img alt="Rust" src="https://img.shields.io/badge/runtime-Rust-orange">
+  <img alt="Data" src="https://img.shields.io/badge/data-FALCON%20H1%20human%20BCI-teal">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
 
 **An intracortical decoder that is accurate yesterday drifts today.** `nd` treats decoders as programs: it diagnoses where they break, repairs them from seconds of data, compiles them to dependency-free streaming Rust, and—on small RNNs—certifies what algorithm they actually run.
+
+<p align="center"><img src="docs/assets/replay.png" alt="Interactive replay: target vs frozen vs repaired velocities on a later recording day" width="860"></p>
+
+**Contents:** [Quick start](#quick-start) · [Human decoder recovery](#human-decoder-recovery-across-days) · [Certified RNN repair](#the-result-perfect-fixtures-wrong-algorithm-certified-repair) · [Macaque BCI demo](#real-neural-data-decoder) · [CLI](#cli-examples) · [Reproduce](#reproduce-and-verify)
 
 ```text
 human intracortical counts (176 ch, 20 ms bins)
@@ -26,6 +38,14 @@ human intracortical counts (176 ch, 20 ms bins)
 The label-free front-end alone beats every earlier configuration, including one tuned on the evaluation days. The pre-registered 30-second patch adds **+0.0062** over the strongest matched baseline and wins on **5 of 7** days. Every number is offline, open-loop, one participant, and reused-data evidence; details and disclosures below.
 
 **Research:** [paper / DOI](https://doi.org/10.5281/zenodo.19339860) · [discussion](https://www.lesswrong.com/posts/MgydourqbPxopHSyC/neural-decompilation-we-decompiled-an-llm-attention-head). The manuscript and historical LLM-head notes ([`docs/`](docs/), `paper/`, parts of `results/`) are not fresh verification of this checkout.
+
+## Quick start
+
+```bash
+git clone https://github.com/thebasedcapital/neural-decompile && cd neural-decompile
+make recovery        # needs Rust + uv; fetches pinned public data once (~100 MB), ~2 min on a laptop CPU
+xdg-open results/recovery.html   # or open it in any browser
+```
 
 ## Human decoder recovery across days
 
