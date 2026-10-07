@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Deterministic GRU sweep for H1 velocity decoding on precomputed features.
 
-Causal model, forward-chaining fold validation on earlier days only.
-Runs identically on a local GPU or a Runpod pod; writes one JSON per trial.
+Causal model, forward-chaining fold validation on earlier days only. Each fold
+trains on all preceding held-in-calib days, early-stops on the last training
+day's held-in-minival, and reports the fold day's held-in-minival score once:
+the reported score never selects epochs. Folds are zero-shot (no fold-day
+calibration), so compare them with the frozen linear decoder, not with
+30-second recalibration. Runs on a local GPU or a Runpod pod; one JSON per trial.
 """
 import argparse
 import json
@@ -42,7 +46,10 @@ def score_r2(truth, prediction):
 
 
 def smooth(values, beta):
-    if beta >= 1:
+    """Causal exponential smoothing; beta=1 is the identity."""
+    if not 0 < beta <= 1:
+        raise ValueError(f"Smoothing beta must be in (0, 1]: {beta}")
+    if beta == 1:
         return values
     out = np.empty_like(values)
     previous = None
@@ -108,19 +115,20 @@ def evaluate(model, day_data, device, beta):
     return score_r2(np.concatenate(truths), np.concatenate(predictions))
 
 
-def train_one(config, fold_train, fold_val, seed, epochs, device):
+def train_one(config, fold_train, fold_stop, fold_val, seed, epochs, device):
     torch.manual_seed(seed); np.random.seed(seed); random.seed(seed)
     torch.use_deterministic_algorithms(True)
     torch.backends.cudnn.deterministic = True
     x_mean, x_scale, y_mean, y_scale = stats(fold_train)
     train = DayData(fold_train, x_mean, x_scale, y_mean, y_scale)
+    stop = DayData(fold_stop, x_mean, x_scale, y_mean, y_scale)
     val = DayData(fold_val, x_mean, x_scale, y_mean, y_scale)
     model = Gru(config["hidden"], config["layers"], config["dropout"]).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=config["lr"], weight_decay=config["weight_decay"])
     loss_fn = nn.MSELoss()
     rng = np.random.default_rng(seed)
     batches = train.batches(rng, config["window"], config["batch"])
-    best_val, best_state, patience = -np.inf, None, 0
+    best_stop, best_state, patience, diverged = -np.inf, None, 0, False
     for epoch in range(epochs):
         model.train()
         seen = 0
@@ -130,24 +138,28 @@ def train_one(config, fold_train, fold_val, seed, epochs, device):
             opt.zero_grad()
             loss = loss_fn(model(x)[0], y)
             if not torch.isfinite(loss):
-                patience += config["patience"]  # diverged: force the early stop
+                diverged = True
                 break
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
             seen += x.shape[0] * x.shape[1]
-        val_r2 = evaluate(model, val, device, config["beta"])
-        if val_r2 > best_val:
-            best_val, patience = val_r2, 0
+        if diverged:
+            break
+        stop_r2 = evaluate(model, stop, device, config["beta"])
+        if stop_r2 > best_stop:
+            best_stop, patience = stop_r2, 0
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
         else:
             patience += 1
             if patience >= config["patience"]:
                 break
+    if best_state is None:
+        return {"stop_r2": None, "val_r2": float("nan"), "raw_r2": float("nan"),
+                "diverged": diverged, "epochs_run": epoch + 1}
     model.load_state_dict(best_state)
-    raw = evaluate(model, val, device, 1.0)
-    return {"val_r2": best_val, "raw_r2": raw,
-            "best_beta": config["beta"] if best_val >= raw else 0.0,
+    return {"stop_r2": best_stop, "val_r2": evaluate(model, val, device, config["beta"]),
+            "raw_r2": evaluate(model, val, device, 1.0), "diverged": diverged,
             "epochs_run": epoch + 1}
 
 
@@ -162,7 +174,7 @@ def sample_config(rng, epoch_cap):
         "window": int(rng.choice([32, 64, 128])),
         "batch": int(rng.choice([256, 512, 1024])),
         "patience": int(rng.choice([3, 5, 8])),
-        "beta": float(rng.choice([0.0, 0.1, 0.2])),
+        "beta": float(rng.choice([0.1, 0.2, 1.0])),
         "epoch_cap": epoch_cap,
     }
 
@@ -198,10 +210,12 @@ def main():
         for fold_index, fold_day in enumerate(fold_days):
             day_number = 3 + fold_index
             train_sessions = [s for (d, split), ss in days.items() if split == "held-in-calib" and d in all_days[:day_number] for s in ss]
+            stop_sessions = days.get((all_days[day_number - 1], "held-in-minival"), [])
             val_sessions = days.get((fold_day, "held-in-minival"), [])
-            if not train_sessions or not val_sessions:
+            if not train_sessions or not stop_sessions or not val_sessions:
                 raise ValueError(f"Empty fold for {fold_day}")
-            result = train_one(config, train_sessions, val_sessions, args.seed + index, config["epoch_cap"], device)
+            result = train_one(config, train_sessions, stop_sessions, val_sessions,
+                               args.seed + index, config["epoch_cap"], device)
             fold_scores.append({"day": fold_day, **result})
         mean = float(np.mean([f["val_r2"] for f in fold_scores if math.isfinite(f["val_r2"])])) \
             if any(math.isfinite(f["val_r2"]) for f in fold_scores) else float("nan")

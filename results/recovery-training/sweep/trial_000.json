@@ -9,7 +9,7 @@
     "window": 32,
     "batch": 512,
     "patience": 5,
-    "beta": 0.2,
+    "beta": 1.0,
     "epoch_cap": 3
   },
   "fold_days": [
@@ -20,29 +20,32 @@
   "fold_scores": [
     {
       "day": "19250115",
-      "val_r2": 0.04574090242385864,
+      "stop_r2": 0.11452841758728027,
+      "val_r2": 0.03199726343154907,
       "raw_r2": 0.03199726343154907,
-      "best_beta": 0.2,
+      "diverged": false,
       "epochs_run": 3
     },
     {
       "day": "19250119",
-      "val_r2": 0.056659817695617676,
+      "stop_r2": 0.11271059513092041,
+      "val_r2": 0.0471423864364624,
       "raw_r2": 0.0471423864364624,
-      "best_beta": 0.2,
+      "diverged": false,
       "epochs_run": 3
     },
     {
       "day": "19250120",
-      "val_r2": 0.09109199047088623,
+      "stop_r2": 0.13910937309265137,
+      "val_r2": 0.07817351818084717,
       "raw_r2": 0.07817351818084717,
-      "best_beta": 0.2,
+      "diverged": false,
       "epochs_run": 3
     }
   ],
-  "mean_r2": 0.06449757019678752,
+  "mean_r2": 0.05243772268295288,
   "seed": 17,
-  "elapsed_s": 8.0,
+  "elapsed_s": 9.7,
   "device": "cuda",
   "gpu": "Quadro RTX 4000"
 }

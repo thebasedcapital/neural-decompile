@@ -31,7 +31,7 @@
 
 ## Conclusions
 
-1. **Sparse decompilation is verified.** Keeping only 882/16,384 weights (5.4%) changes perplexity by 0.05-0.23%. The 23-term sparse formula from DECOMPILED-HEAD.md is functionally equivalent to the dense original.
+1. **Sparse decompilation is verified.** Keeping only 882/16,384 weights (5.4%) changes perplexity by 0.05-0.23%. The 23-term sparse formula from [docs/llm-head-21.md](../docs/llm-head-21.md) is functionally equivalent to the dense original.
 
 2. **Sparse ≈ Nuked.** The sparse version and the completely zeroed version produce nearly identical perplexity. This means the 882 surviving weights capture essentially ALL of head 21's contribution — the remaining ~10K small weights were noise.
 
